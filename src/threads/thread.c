@@ -37,6 +37,41 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+/* thread를 priority 순서 대로 list set시키기 위한 보조 함수 */
+bool 
+thread_set_priority_list (const struct list_elem* a_, const struct list_elem* b_,
+               void* aux UNUSED)
+{
+
+  const struct thread* a = list_entry(a_, struct thread, elem);
+  const struct thread* b = list_entry(b_, struct thread, elem);
+  
+  return a->priority > b->priority;
+}
+
+void thread_update_priority(struct thread* target_thread){
+  enum intr_level old_level = intr_disable ();
+
+  if (list_empty(&target_thread->lock_list)) {
+    target_thread->priority = target_thread->original_priority;
+    intr_set_level (old_level);
+    return;
+  }
+
+  struct lock *max_priority_lock = list_entry(
+    list_front(&target_thread->lock_list),
+    struct lock, 
+    elem
+  );
+  if (max_priority_lock->lock_priority > target_thread->original_priority){
+    target_thread->priority = max_priority_lock->lock_priority;
+  } else {
+    target_thread->priority = target_thread->original_priority;
+  }
+
+  intr_set_level (old_level);
+}
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -71,16 +106,24 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-/* thread priority에 맞춰서 리스트 정렬을 위한 보조 함수*/
-static
-bool thread_set_priority_list (const struct list_elem* a_, const struct list_elem* b_, void* aux UNUSED)
-{
-  const struct thread* a = list_entry(a_, struct thread, elem);
-  const struct thread* b = list_entry(b_, struct thread, elem);
-  
-  return a->priority > b->priority;
-}
 
+/* ready list에서의 thread가 현재 thread보다 높은 priority를 갖을 때 */
+void thread_preempt(void)
+{
+  enum intr_level old_level = intr_disable ();
+  if (list_empty(&ready_list)) return;
+
+  struct thread* curr_thread = thread_current();
+  list_sort(&ready_list, thread_set_priority_list, NULL);
+  struct thread* next_thread = list_entry(list_front(&ready_list), struct thread, elem);
+  
+  if (next_thread->priority > curr_thread->priority){
+    thread_yield();
+  }
+
+  intr_set_level (old_level);
+
+}
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -330,7 +373,20 @@ thread_yield (void)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+
+  enum intr_level old_level = intr_disable ();
+
+  struct thread *curr_thread = thread_current();
+  int old_priority = curr_thread->priority;
+  curr_thread->original_priority = new_priority;
+
+  /* ready list에서 priority 더 높은놈있으면 yield 시켜야함 */
+  if (old_priority > new_priority){
+    thread_update_priority(curr_thread);
+    thread_preempt();
+  }
+
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */

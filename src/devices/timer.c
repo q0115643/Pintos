@@ -29,6 +29,28 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
+/* 블락되는 타이머들을 모아두는 리스트 */
+static struct list timer_block_list;
+
+/* list elem에서 ublock time을 저장해 놓았던 것을 바탕으로 작은 순서 대로 리스트 정렬을 
+  돕기 위한 보조 함수 */
+static bool 
+timer_set_block_list (const struct list_elem* a_, const struct list_elem* b_, void* aux UNUSED)
+{
+
+  const struct thread* a = list_entry(a_, struct thread, elem);
+  const struct thread* b = list_entry(b_, struct thread, elem);
+  
+  if (b->timer_tick > a->timer_tick)
+    return true;
+
+  else if (a->timer_tick == b->timer_tick)
+    return (a->priority > b->priority);
+
+  return false;
+
+ }
+
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
    corresponding interrupt. */
@@ -44,7 +66,12 @@ timer_init (void)
   outb (0x40, count >> 8);
 
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+  /* 타이머 블락 리스트 초기화 필요 */
+  list_init (&timer_block_list);
+
 }
+
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
 void
@@ -92,15 +119,52 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
+  /* busy waiting을 막기 위해 yield 제거 */
+  //ASSERT (intr_get_level () == INTR_ON);
+  //while (timer_elapsed (start) < ticks) 
+  //  thread_yield ();
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  /* interrupt로 에러가 남. 인터럽트 방지 */
+  struct thread *curr_thread = thread_current ();
+  enum intr_level old_level;
+  old_level = intr_disable ();
+
+  /* thread의 unblock time 저장 */
+  curr_thread->timer_tick = start + ticks;
+
+  /* timer block list에 wake up할 순서대로 저장해야한다 */
+  list_insert_ordered(&timer_block_list, &curr_thread->elem, timer_set_block_list, NULL);
+
+  /* 블락 */
+  thread_block();
+
+  /* interrupt 방지 */ 
+  intr_set_level(old_level);
+ 
+
+}
+
+
+void
+timer_unblock (void)
+{
+  while (!list_empty(&timer_block_list))
+  {
+    struct thread* next_thread = list_entry(list_front(&timer_block_list), struct thread, elem);
+    if (ticks < next_thread->timer_tick) 
+      break;
+
+    list_pop_front(&timer_block_list);
+    thread_unblock(next_thread);
+
+  }
+
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -130,12 +194,34 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+
+/* timer 시간이 되면 thread를 깨워야 한다 */
+void
+timer_wakeup (void)
+{
+  struct thread* t;
+    
+  while (!list_empty(&timer_block_list))
+  {
+
+    t = list_entry(list_front (&timer_block_list), struct thread, elem);
+     if (ticks < t->timer_tick) break;
+     
+    list_pop_front(&timer_block_list);
+    thread_unblock(t);
+
+  }
+
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  /* thread wakeup 시켜야 한다 */
+  timer_unblock();
   thread_tick ();
 }
 

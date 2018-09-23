@@ -102,6 +102,14 @@ struct thread
     
     /* unblock time을 저장하기 위함 */
     int64_t timer_tick;
+
+    /* lock donation */
+    struct lock *acquiring_lock;
+    int original_priority;
+
+    /* 여러 개의 lock을 들고 있는 경우 */
+    struct list lock_list;
+
   };
 
 /* If false (default), use round-robin scheduler.
@@ -109,6 +117,9 @@ struct thread
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+void thread_preempt(void);
+void thread_update_priority(struct thread* );
+bool thread_set_priority_list (const struct list_elem*, const struct list_elem*, void *);
 void thread_init (void);
 void thread_start (void);
 
