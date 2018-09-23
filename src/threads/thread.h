@@ -100,8 +100,8 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     
-    /* unblock time을 저장하기 위함 */
-    int64_t timer_tick;
+    /* wakeup time을 저장하기 위함 */
+    int64_t wakeup_time;
 
     /* lock donation */
     struct lock *acquiring_lock;
@@ -118,7 +118,7 @@ struct thread
 extern bool thread_mlfqs;
 
 void thread_preempt(void);
-void thread_update_priority(struct thread* );
+void thread_reset_priority(struct thread* );
 bool thread_set_priority_list (const struct list_elem*, const struct list_elem*, void *);
 void thread_init (void);
 void thread_start (void);

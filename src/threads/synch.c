@@ -132,7 +132,6 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) {
-
     /* priority 순서 대로 정렬 */
     list_sort(&sema->waiters, thread_set_priority_list, NULL);
     thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
@@ -264,8 +263,11 @@ lock_acquire (struct lock *lock)
   curr_thread->acquiring_lock = lock;
 
   /* lock priority donation */
-  if(curr_thread->priority > lock->lock_priority){
+  if(curr_thread->priority > lock->lock_priority)
+  {
+
     lock->lock_priority = curr_thread->priority;
+
   }
 
   donate_priority(curr_thread);
@@ -278,8 +280,10 @@ lock_acquire (struct lock *lock)
 
   list_insert_ordered(&curr_thread->lock_list, &lock->elem, lock_set_priority_list, NULL);
   
-  if (lock->lock_priority > curr_thread->priority){
+  if (lock->lock_priority > curr_thread->priority)
+  {
     curr_thread->priority = lock->lock_priority;
+
     /* 만약, ready list에서 priority가 큰 것이 있다면, 먼저 실행 */
     thread_preempt();
   }
@@ -287,6 +291,7 @@ lock_acquire (struct lock *lock)
 
   intr_set_level(old_level);
 }
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -322,12 +327,14 @@ lock_release (struct lock *lock)
 
   /* TODO : Rollback 짜야돼 */
   enum intr_level old_level = intr_disable();
+
   list_remove (&lock->elem);
-  thread_update_priority(lock->holder); 
+  thread_reset_priority(lock->holder); 
 
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
   intr_set_level (old_level);
 }
 
@@ -435,7 +442,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters))
   {
-    
+
     list_sort (&cond->waiters, sema_set_priority_list, NULL);
     sema_up (&list_entry (list_pop_front (&cond->waiters), struct semaphore_elem, elem)->semaphore);
   

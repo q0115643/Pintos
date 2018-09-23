@@ -50,7 +50,7 @@ thread_set_priority_list (const struct list_elem* a_, const struct list_elem* b_
 }
 
 void 
-thread_update_priority(struct thread* target_thread){
+thread_reset_priority(struct thread* target_thread){
   enum intr_level old_level = intr_disable ();
 
   if (list_empty(&target_thread->lock_list)) {
@@ -59,8 +59,7 @@ thread_update_priority(struct thread* target_thread){
     return;
   }
 
-
-  struct lock *priority_lock = list_entry( list_front(&target_thread->lock_list), struct lock, elem);
+  struct lock *priority_lock = list_entry(list_front(&target_thread->lock_list), struct lock, elem);
   
   if (priority_lock->lock_priority > target_thread->original_priority){
     target_thread->priority = priority_lock->lock_priority;
@@ -69,6 +68,7 @@ thread_update_priority(struct thread* target_thread){
   }
 
   intr_set_level (old_level);
+
 }
 
 /* Stack frame for kernel_thread(). */
@@ -385,12 +385,12 @@ thread_set_priority (int new_priority)
   enum intr_level old_level = intr_disable ();
 
   struct thread *curr_thread = thread_current();
-  int old_priority = curr_thread->priority;
+  int curr_priority = curr_thread->priority;
   curr_thread->original_priority = new_priority;
 
   /* ready list에서 priority 더 높은 thread 있으면 yield 시켜야함 */
-  if (old_priority > new_priority){
-    thread_update_priority(curr_thread);
+  if (curr_priority > new_priority){
+    thread_reset_priority(curr_thread);
     thread_preempt();
   }
 
@@ -641,7 +641,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
