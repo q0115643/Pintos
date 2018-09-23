@@ -99,6 +99,9 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    
+    /* unblock time을 저장하기 위함 */
+    int64_t timer_tick;
   };
 
 /* If false (default), use round-robin scheduler.

@@ -71,6 +71,17 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/* thread priority에 맞춰서 리스트 정렬을 위한 보조 함수*/
+static
+bool thread_set_priority_list (const struct list_elem* a_, const struct list_elem* b_, void* aux UNUSED)
+{
+  const struct thread* a = list_entry(a_, struct thread, elem);
+  const struct thread* b = list_entry(b_, struct thread, elem);
+  
+  return a->priority > b->priority;
+}
+
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -198,6 +209,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  /* 만약, 현재 thread보다 높은 priority를 갖는다면,
+    현재 thread는 yield 되어야 한다. */
+  if (priority > thread_current()->priority)
+    thread_yield ();
 
   return tid;
 }
@@ -354,7 +370,7 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -403,7 +419,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -463,10 +479,14 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (list_empty (&ready_list)) {
     return idle_thread;
-  else
+  } else {
+    /* list(readylist)에서 thread를 빼기 전에 정렬을 한다 */
+    list_sort(&ready_list, thread_set_priority_list, NULL);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
