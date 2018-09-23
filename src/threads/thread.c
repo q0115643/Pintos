@@ -49,7 +49,8 @@ thread_set_priority_list (const struct list_elem* a_, const struct list_elem* b_
   return a->priority > b->priority;
 }
 
-void thread_update_priority(struct thread* target_thread){
+void 
+thread_update_priority(struct thread* target_thread){
   enum intr_level old_level = intr_disable ();
 
   if (list_empty(&target_thread->lock_list)) {
@@ -58,13 +59,11 @@ void thread_update_priority(struct thread* target_thread){
     return;
   }
 
-  struct lock *max_priority_lock = list_entry(
-    list_front(&target_thread->lock_list),
-    struct lock, 
-    elem
-  );
-  if (max_priority_lock->lock_priority > target_thread->original_priority){
-    target_thread->priority = max_priority_lock->lock_priority;
+
+  struct lock *priority_lock = list_entry( list_front(&target_thread->lock_list), struct lock, elem);
+  
+  if (priority_lock->lock_priority > target_thread->original_priority){
+    target_thread->priority = priority_lock->lock_priority;
   } else {
     target_thread->priority = target_thread->original_priority;
   }
@@ -252,11 +251,9 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
   /* 만약, 현재 thread보다 높은 priority를 갖는다면,
     현재 thread는 yield 되어야 한다. */
-  if (priority > thread_current()->priority)
-    thread_yield ();
+  thread_preempt();
 
   return tid;
 }
@@ -294,7 +291,12 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  if (!list_empty(&ready_list))
+  {
+    list_sort(&ready_list, thread_set_priority_list, NULL);
+  }
+  
+  list_insert_ordered (&ready_list, &t->elem, thread_set_priority_list, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -363,7 +365,13 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (curr != idle_thread) 
-    list_push_back (&ready_list, &curr->elem);
+  {
+    if (!list_empty(&ready_list))
+    {
+      list_sort(&ready_list, thread_set_priority_list, NULL);
+    }
+    list_insert_ordered (&ready_list, &curr->elem, thread_set_priority_list, NULL);
+  }
   curr->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -380,7 +388,7 @@ thread_set_priority (int new_priority)
   int old_priority = curr_thread->priority;
   curr_thread->original_priority = new_priority;
 
-  /* ready list에서 priority 더 높은놈있으면 yield 시켜야함 */
+  /* ready list에서 priority 더 높은 thread 있으면 yield 시켜야함 */
   if (old_priority > new_priority){
     thread_update_priority(curr_thread);
     thread_preempt();
@@ -512,6 +520,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  /* 추가해준 구조 init해주기 */
+  t->acquiring_lock = NULL;
+  list_init(&t->lock_list);
+  t->original_priority = priority;
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

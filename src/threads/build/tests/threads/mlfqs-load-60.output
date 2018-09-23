@@ -1,9 +1,9 @@
-Writing command line to /tmp/e1oYToiyxG.dsk...
+Writing command line to /tmp/LaTI43P59b.dsk...
 warning: can't find squish-pty, so terminal input will fail
 bochs -q
 Kernel command line: -q -mlfqs run mlfqs-load-60
 Pintos booting with 4,096 kB RAM...
-375 pages available in kernel pool.
+374 pages available in kernel pool.
 374 pages available in user pool.
 Calibrating timer...  204,600 loops/s.
 Boot complete.
@@ -103,8 +103,8 @@ Executing 'mlfqs-load-60':
 (mlfqs-load-60) After 178 seconds, load average=0.00.
 (mlfqs-load-60) end
 Execution of 'mlfqs-load-60' complete.
-Timer: 18838 ticks
-Thread: 11993 idle ticks, 6848 kernel ticks, 0 user ticks
+Timer: 18839 ticks
+Thread: 11914 idle ticks, 6929 kernel ticks, 0 user ticks
 Console: 5298 characters output
 Keyboard: 0 keys pressed
 Powering off...

@@ -135,10 +135,11 @@ sema_up (struct semaphore *sema)
 
     /* priority 순서 대로 정렬 */
     list_sort(&sema->waiters, thread_set_priority_list, NULL);
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+    thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
   }
   sema->value++;
+  /* error - preeption이 필요하다 */
+  thread_preempt();
   intr_set_level (old_level);
 }
 
@@ -434,9 +435,10 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters))
   {
+    
     list_sort (&cond->waiters, sema_set_priority_list, NULL);
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+    sema_up (&list_entry (list_pop_front (&cond->waiters), struct semaphore_elem, elem)->semaphore);
+  
   }
 }
 
