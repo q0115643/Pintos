@@ -41,13 +41,13 @@ timer_set_block_list (const struct list_elem* a_, const struct list_elem* b_, vo
   const struct thread* a = list_entry(a_, struct thread, elem);
   const struct thread* b = list_entry(b_, struct thread, elem);
   
-  if (b->timer_tick > a->timer_tick)
+  if (b->wakeup_time > a->wakeup_time)
     return true;
 
-  else if (a->timer_tick == b->timer_tick)
+  else if (a->wakeup_time == b->wakeup_time)
     return (a->priority > b->priority);
 
-  return false;
+  else return false;
 
  }
 
@@ -125,18 +125,17 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
+  /* interrupt로 에러가 남. 인터럽트 방지 */
+  enum intr_level old_level = intr_disable ();
   /* busy waiting을 막기 위해 yield 제거 */
   //ASSERT (intr_get_level () == INTR_ON);
-  //while (timer_elapsed (start) < ticks) 
+  //while (timer_elapsed ㅇ(start) < ticks) 
   //  thread_yield ();
-
-  /* interrupt로 에러가 남. 인터럽트 방지 */
   struct thread *curr_thread = thread_current ();
-  enum intr_level old_level;
-  old_level = intr_disable ();
 
-  /* thread의 unblock time 저장 */
-  curr_thread->timer_tick = start + ticks;
+
+  /* thread의 wakeup time 저장 */
+  curr_thread->wakeup_time = start + ticks;
 
   /* timer block list에 wake up할 순서대로 저장해야한다 */
   list_insert_ordered(&timer_block_list, &curr_thread->elem, timer_set_block_list, NULL);
@@ -152,12 +151,12 @@ timer_sleep (int64_t ticks)
 
 
 void
-timer_unblock (void)
+timer_wakeup (void)
 {
   while (!list_empty(&timer_block_list))
   {
     struct thread* next_thread = list_entry(list_front(&timer_block_list), struct thread, elem);
-    if (ticks < next_thread->timer_tick) 
+    if (ticks < next_thread->wakeup_time) 
       break;
 
     list_pop_front(&timer_block_list);
@@ -196,24 +195,6 @@ timer_print_stats (void)
 }
 
 
-/* timer 시간이 되면 thread를 깨워야 한다 */
-void
-timer_wakeup (void)
-{
-  struct thread* t;
-    
-  while (!list_empty(&timer_block_list))
-  {
-
-    t = list_entry(list_front (&timer_block_list), struct thread, elem);
-     if (ticks < t->timer_tick) break;
-     
-    list_pop_front(&timer_block_list);
-    thread_unblock(t);
-
-  }
-
-}
 
 /* Timer interrupt handler. */
 static void
@@ -221,7 +202,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   /* thread wakeup 시켜야 한다 */
-  timer_unblock();
+  timer_wakeup ();
   thread_tick ();
 }
 
