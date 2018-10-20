@@ -113,7 +113,6 @@ void thread_preempt(void)
   if (list_empty(&ready_list)) return;
 
   struct thread* curr_thread = thread_current();
-  list_sort(&ready_list, thread_set_priority_list, NULL);
   struct thread* next_thread = list_entry(list_front(&ready_list), struct thread, elem);
   
   if (next_thread->priority > curr_thread->priority){
@@ -291,11 +290,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  if (!list_empty(&ready_list))
-  {
-    list_sort(&ready_list, thread_set_priority_list, NULL);
-  }
-  
+
   list_insert_ordered (&ready_list, &t->elem, thread_set_priority_list, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -366,10 +361,6 @@ thread_yield (void)
   old_level = intr_disable ();
   if (curr != idle_thread) 
   {
-    if (!list_empty(&ready_list))
-    {
-      list_sort(&ready_list, thread_set_priority_list, NULL);
-    }
     list_insert_ordered (&ready_list, &curr->elem, thread_set_priority_list, NULL);
   }
   curr->status = THREAD_READY;
