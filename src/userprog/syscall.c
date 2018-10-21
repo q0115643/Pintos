@@ -32,7 +32,7 @@ static int add_thread_file_descriptor(struct file *file);
 static struct file * get_file_from_fd(int fd);
 static void remove_file(int fd);
 
-struct lock file_lock;
+static struct lock file_lock;
 void
 filesys_acquire(void)
 {
@@ -174,9 +174,9 @@ system_halt(void)
 
 void system_exit(int status)
 {
-	struct thread *t = thread_current();
+	struct thread *cur = thread_current();
 	printf("%s: exit(%d\n", thread_current()->name, status);
-	t->exit_status = status;
+	cur->exit_status = status;
 	thread_exit();
 }
 

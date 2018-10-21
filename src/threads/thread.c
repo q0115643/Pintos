@@ -118,9 +118,7 @@ void thread_preempt(void)
   if (next_thread->priority > curr_thread->priority){
     thread_yield();
   }
-
   intr_set_level (old_level);
-
 }
 
 /* Initializes the threading system by transforming the code
@@ -253,6 +251,7 @@ thread_create (const char *name, int priority,
   struct thread_child *child;
   child = (struct thread_child *) malloc (sizeof (struct thread_child));
   cur->child_status = LOADING;
+  t->parent = thread_current ();
   child->tid = tid;
   child->exit = false;
   sema_init(&child->sema, 0);
@@ -529,7 +528,6 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init (&t->fd_list);
   list_init (&t->child_list);
   t->fd_count = 2;
-  t->parent = thread_current();
 #endif
 }
 

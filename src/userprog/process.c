@@ -321,13 +321,12 @@ load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
-      goto done; 
+      goto done;
     }
   /* file 열었으니 deny_write */
   file_deny_write(file);
