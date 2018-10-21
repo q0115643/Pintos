@@ -1,20 +1,430 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <user/syscall.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "threads/init.h"
+#include "userprog/process.h"
+#include "devices/input.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+void free(void *ptr);
+void *malloc(size_t);
 
 static void syscall_handler (struct intr_frame *);
+static void system_halt(void);
+static pid_t system_exec(const char* cmd_line);
+static int system_wait(pid_t pid);
+static bool system_create(const char* file, unsigned initial_size);
+static bool system_remove(const char* file);
+static int system_open(const char* file);
+static int system_filesize(int fd);
+static int system_read(int fd, void* buffer, unsigned size);
+static int system_write(int fd, const void* buffer, unsigned size);
+static void system_seek(int fd, unsigned position);
+static unsigned system_tell(int fd);
+static void system_close(int fd);
+
+static int add_thread_file_descriptor(struct file *file);
+static struct file * get_file_from_fd(int fd);
+static void remove_file(int fd);
+
+struct lock file_lock;
+void
+filesys_acquire(void)
+{
+	lock_acquire(&file_lock);
+}
+void
+filesys_release(void)
+{
+	lock_release(&file_lock);
+}
+
+static inline void
+get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
+{
+	ASSERT(1<=argc && argc<=3);
+	while(argc--)
+	{
+		if(is_user_vaddr((void *)esp))
+  		system_exit(-1);
+  	*(args++) = *(++esp);
+	}
+	if(is_user_vaddr((void *)esp))
+		system_exit(-1);
+}
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&file_lock);
 }
 
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  printf ("system call!\n");
-  thread_exit ();
+  int32_t args[3];
+  unsigned int argc;
+  if(is_user_vaddr(f->esp))
+  	system_exit(-1);
+  switch(*(int*)f->esp)
+  {
+  	case SYS_HALT:
+  	{
+  		system_halt();
+  		break;
+  	}
+  	case SYS_EXIT:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		system_exit(args[0]);
+  		break;
+  	}
+  	case SYS_EXEC:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_exec((const char *)args[0]);
+  		break;
+  	}
+  	case SYS_WAIT:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_wait((pid_t)args[0]);
+  		break;
+  	}
+  	case SYS_CREATE:
+  	{
+  		argc = 2;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_create((const char*)args[0], (unsigned)args[1]);
+  		break;
+  	}
+  	case SYS_REMOVE:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_remove((const char*)args[0]);
+  		break;
+  	}
+  	case SYS_OPEN:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_open((const char*)args[0]);
+  		break;
+  	}
+  	case SYS_FILESIZE:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+      f->eax = system_filesize((int)args[0]);
+      break;
+  	}
+  	case SYS_READ:
+  	{
+  		argc = 3;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_read((int)args[0], (void*)args[1], (unsigned)args[2]);
+  		break;
+  	}
+  	case SYS_WRITE:
+  	{
+  		argc = 3;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_write((int)args[0], (const void*)args[1], (unsigned)args[2]);
+  		break;
+  	}
+  	case SYS_SEEK:
+  	{
+  		argc = 2;
+  		get_arguments(f->esp, args, argc);
+  		system_seek((int)args[0], (unsigned)args[1]);
+  		break;
+  	}
+  	case SYS_TELL:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		f->eax = system_tell((int)args[0]);
+  		break;
+  	}
+  	case SYS_CLOSE:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		system_close((int)args[0]);
+  		break;
+  	}
+  }
 }
+
+static void
+system_halt(void)
+{
+	power_off();
+}
+
+void system_exit(int status)
+{
+	struct thread *t = thread_current();
+	printf("%s: exit(%d\n", thread_current()->name, status);
+	t->exit_status = status;
+	thread_exit();
+}
+
+static pid_t
+system_exec(const char* cmd_line)
+{
+	if(!is_user_vaddr((void*)cmd_line))
+		system_exit(-1);
+	pid_t pid;
+	struct thread* t = thread_current();
+	pid = process_execute(cmd_line);
+	sema_down(&t->load_sema);
+	return t->child_status == LOAD_FAILED ? TID_ERROR : pid;
+}
+
+static int
+system_wait(pid_t pid)
+{
+	return process_wait(pid);
+}
+
+static bool
+system_create(const char* file, unsigned initial_size)
+{
+	if(file==NULL || !is_user_vaddr((void *)file))
+		system_exit(-1);
+	filesys_acquire();
+	bool result = filesys_create(file, initial_size);
+	filesys_release();
+	return result;
+}
+
+static bool
+system_remove(const char* file)
+{
+	if(file==NULL || !is_user_vaddr((void *)file))
+		system_exit(-1);
+	filesys_acquire();
+	bool result = filesys_remove(file);
+	filesys_release();
+	return result;
+}
+
+static int
+system_open(const char* file)
+{
+	int fd = -1;
+	if(file==NULL || !is_user_vaddr((void *)file))
+		system_exit(-1);
+	filesys_acquire();
+	struct file *f = filesys_open(file);
+	filesys_release();
+	if(f)
+		fd = add_thread_file_descriptor(f);
+	return fd;
+}
+
+static int
+system_filesize(int fd)
+{
+	int size;
+	struct file *file;
+	filesys_acquire();
+	file = get_file_from_fd(fd);
+	if(file==NULL)
+		system_exit(-1);
+	size = file_length(file);
+	filesys_release();
+	return size;
+}
+
+static int
+system_read(int fd, void* buffer, unsigned size)
+{
+	struct file *file;
+	unsigned i;
+	int bytes = -1;
+	if((void*)buffer==NULL || (void *)(buffer+size)==NULL || !is_user_vaddr(buffer))
+		system_exit(-1);
+	if(fd==STDIN_FILENO)
+	{
+		for(i=0; i<size; i++)
+		{
+			*((uint8_t*)buffer + 1) = input_getc();
+			if(*((uint8_t*)buffer + 1) == 0)
+				break;
+		}
+		bytes = i;
+	}
+	else
+	{
+		if(!is_user_vaddr(buffer+size))
+			system_exit(-1);
+		else
+		{
+			file = get_file_from_fd(fd);
+			if(file)
+			{
+				filesys_acquire();
+				bytes = file_read(file, buffer, size);
+				filesys_release();
+			}
+		}
+	}
+	return bytes;
+}
+
+static int
+system_write(int fd, const void* buffer, unsigned size)
+{
+	struct file *file;
+	int result = -1;
+	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer))
+		system_exit(-1);
+	if(fd==STDOUT_FILENO)
+	{
+		putbuf(buffer, size);
+		result = size;
+	}
+	else
+	{
+		if(!is_user_vaddr((void*)(buffer+size)))
+			system_exit(-1);
+		else
+		{
+			file = get_file_from_fd(fd);
+			if(file)
+			{
+				filesys_acquire();
+				result = file_write(file, buffer, size);
+				filesys_release();
+			}
+			else
+				result = 0;
+		}
+	}
+	return result;
+}
+
+static void
+system_seek(int fd, unsigned position)
+{
+	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
+		system_exit(-1);
+	struct file *file;
+	file = get_file_from_fd(fd);
+	if(file)
+	{
+		filesys_acquire();
+		file_seek(file, position);
+		filesys_release();
+	}
+}
+
+static unsigned
+system_tell(int fd)
+{
+	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
+		system_exit(-1);
+	struct file *file;
+	unsigned int tell = 0;
+	file = get_file_from_fd(fd);
+	if(file)
+	{
+		filesys_acquire();
+		tell = file_tell(file);
+		filesys_release();
+	}
+	return tell;
+}
+
+static void
+system_close(int fd)
+{
+	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
+		system_exit(-1);
+	struct file *file;
+	file = get_file_from_fd(fd);
+	if(file)
+	{
+		filesys_acquire();
+		file_close(file);
+		filesys_release();
+		remove_file(fd);
+	}
+}
+
+static int
+add_thread_file_descriptor(struct file *file)
+{
+	struct thread *cur = thread_current();
+	struct thread_fd *t_fd = (struct thread_fd *) malloc (sizeof (struct thread_fd));
+
+	t_fd->fd = cur->fd_count++; // 현재 최대 번호가 주어지고 count 늘어남 => 다음 번에는 다른 번호.
+	t_fd->file = file;
+	list_push_back(&cur->fd_list, &t_fd->elem);
+
+	return t_fd->fd;
+}
+
+static struct file *
+get_file_from_fd(int fd)
+{
+	struct thread *cur = thread_current();
+	struct thread_fd *t_fd;
+	struct list_elem *e;
+	if(fd<2 || fd>cur->fd_count)
+		return NULL;
+	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list);
+			e=list_next(e))
+	{
+		t_fd = list_entry(e, struct thread_fd, elem);
+		if(t_fd->fd ==fd)
+			return t_fd->file;
+	}
+	return NULL;
+}
+
+static void
+remove_file(int fd)
+{
+	struct thread *cur = thread_current();
+	struct thread_fd *t_fd;
+	struct list_elem *e;
+	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list);
+			e=list_next(e))
+	{
+		t_fd = list_entry(e, struct thread_fd, elem);
+		if(t_fd->fd == fd)
+		{
+			list_remove(e);
+			free(t_fd);
+			break;
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

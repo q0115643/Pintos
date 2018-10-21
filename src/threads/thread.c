@@ -248,8 +248,18 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
 
+#ifdef USERPROG
+  struct thread *cur = thread_current();
+  struct thread_child *child;
+  child = (struct thread_child *) malloc (sizeof (struct thread_child));
+  cur->child_status = LOADING;
+  child->tid = tid;
+  child->exit = false;
+  sema_init(&child->sema, 0);
+  list_push_back(&cur->child_list, &child->elem);
+#endif
   /* Add to run queue. */
-  thread_unblock (t);
+  thread_unblock(t);
   /* 만약, 현재 thread보다 높은 priority를 갖는다면,
     현재 thread는 yield 되어야 한다. */
   thread_preempt();
@@ -359,10 +369,8 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (curr != idle_thread) 
-  {
+  if (curr != idle_thread)
     list_insert_ordered (&ready_list, &curr->elem, thread_set_priority_list, NULL);
-  }
   curr->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -511,12 +519,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+  t->exit_status = -1;
   /* 추가해준 구조 init해주기 */
   t->acquiring_lock = NULL;
   list_init(&t->lock_list);
   t->original_priority = priority;
-
+#ifdef USERPROG
+  sema_init(&t->load_sema, 0);
+  list_init (&t->fd_list);
+  list_init (&t->child_list);
+  t->fd_count = 2;
+  t->parent = thread_current();
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

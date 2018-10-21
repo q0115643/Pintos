@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -11,7 +12,10 @@ enum thread_status
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
-    THREAD_DYING        /* About to be destroyed. */
+    THREAD_DYING,       /* About to be destroyed. */
+    LOAD_FAILED,
+    LOAD_DONE,
+    LOADING
   };
 
 /* Thread identifier type.
@@ -24,6 +28,22 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* File descriptor of thread. */
+struct thread_fd
+  {
+    int fd;
+    struct file *file;
+    struct list_elem elem;
+  };
+/* Thread Child. */
+struct thread_child
+  {
+    tid_t tid;
+    bool exit;
+    int status;
+    struct semaphore sema;
+    struct list_elem elem;
+  };
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -88,6 +108,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int exit_status;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -95,8 +116,14 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct file *executable;
+    struct list fd_list;
+    int fd_count;
+    struct list child_list;
+    enum thread_status child_status;
+    struct semaphore load_sema;
+    struct thread *parent;
 #endif
-
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     

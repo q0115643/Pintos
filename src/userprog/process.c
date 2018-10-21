@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -19,29 +20,63 @@
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *cmdline, void (**eip) (void), void **esp, char** token_ptr);
+void free(void *ptr);
+void *malloc(size_t);
+void *realloc(void *ptr, size_t size);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *cmdline) 
 {
-  char *fn_copy;
+  char *cmd_copy;
+  char *cmd_copy2;
+  char *file_name;
+  char *token_ptr = NULL;
   tid_t tid;
+  struct file *file;
+  struct thread *cur = thread_current();
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  cmd_copy = palloc_get_page (0);
+  if (cmd_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy(cmd_copy, cmdline, PGSIZE);
+
+  /* 맨 앞의 단어가 file name */
+  cmd_copy2 = palloc_get_page (0);
+  if (cmd_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy(cmd_copy2, cmdline, PGSIZE);
+  file_name = strtok_r(cmd_copy2, " ", &token_ptr);
+
+  /* file 열어보고 없으면 load fail */
+  file = filesys_open(file_name);
+  if (file == NULL)
+  {
+    palloc_free_page(cmd_copy);
+    palloc_free_page(cmd_copy2);
+    cur->child_status = LOAD_FAILED;
+    sema_up(&cur->load_sema); // load_sema는 syscall의 system_exec에서 기다리는 중
+    return TID_ERROR;
+  }
+  file_close(file);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, cmd_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+    palloc_free_page(cmd_copy);
+    palloc_free_page(cmd_copy2);
+    cur->child_status = LOAD_FAILED;
+    free(file_name); // file name은 여기서 free되므로 아래 다른 함수들에서 안 해줘도 됨
+    sema_up(&cur->load_sema);
+  }
+  palloc_free_page(cmd_copy2);
   return tid;
 }
 
@@ -50,21 +85,38 @@ process_execute (const char *file_name)
 static void
 start_process (void *f_name)
 {
-  char *file_name = f_name;
+  char *file_name = (char *)f_name;
+  char *token_ptr = NULL;
   struct intr_frame if_;
   bool success;
+  struct thread *cur = thread_current();
+
+  file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  // pagedir 생성, 인자로 넘어온 이름의 실행파일 오픈, 코드 읽음
+  // setup_stack()으로 stack 초기화하고 eip에 다음 실행 명령어 주소 설정
+  // token_ptr이 나머지 cmdline argument 뽑을 수 있게 해줌.
+  success = load(file_name, &if_.eip, &if_.esp, &token_ptr);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  if (!success)
+  {
+    cur->parent->child_status = LOAD_FAILED;
+    sema_up(&cur->parent->load_sema);
+    system_exit(-1);
+  }
+  else
+  {
+    cur->parent->child_status = LOAD_DONE;
+    sema_up(&cur->parent->load_sema);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -86,21 +138,69 @@ start_process (void *f_name)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  struct thread *cur = thread_current();
+  struct thread_child *child;
+  struct list_elem *e;
+  int status = TID_ERROR;
+  for(e=list_begin(&cur->child_list); e!=list_end(&cur->child_list); e=list_next(e))
+  {
+    child = list_entry(e, struct thread_child, elem);
+    if(child->tid == child_tid)
+    {
+      sema_down(&child->sema); //child exit할 때까지 기다린다. (process_exit에서)
+      status = child->status;
+      list_remove(e);
+      free(child);
+      break;
+    }
+  }
+  return status;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
-  struct thread *curr = thread_current ();
+  struct thread *cur = thread_current ();
   uint32_t *pd;
+  struct list_elem *e;
+  struct thread_child *child;
+  struct thread_fd *t_fd;
+
+  if(!list_empty(&cur->fd_list))
+  {
+    e = list_front(&cur->fd_list);
+    while(e!=list_end(&cur->fd_list))
+    {
+      t_fd = list_entry(e, struct thread_fd, elem);
+      e = list_remove(e);
+      filesys_acquire();
+      file_close(t_fd->file);
+      filesys_release();
+      free(t_fd);
+    }
+  }
+  filesys_acquire();
+  file_close(cur->executable);
+  filesys_release();
+
+  for(e=list_begin(&cur->parent->child_list); e!=list_end(&cur->parent->child_list); e=list_next(e))
+  {
+    child = list_entry(e, struct thread_child, elem);
+    if(child->tid==cur->tid)
+    {
+      child->exit = true;
+      child->status = cur->exit_status;
+      sema_up(&child->sema);
+      break;
+    }
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
-  pd = curr->pagedir;
+  pd = cur->pagedir;
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
@@ -110,7 +210,7 @@ process_exit (void)
          directory before destroying the process's page
          directory, or our active page directory will be one
          that's been freed (and cleared). */
-      curr->pagedir = NULL;
+      cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
@@ -200,13 +300,14 @@ static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
+static bool argument_setup(void **esp, const char *file_name, char **token_ptr);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -228,6 +329,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  /* file 열었으니 deny_write */
+  file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -305,6 +408,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp))
     goto done;
 
+  /* stack 생겼으니 argument 가져다 채우기 */
+  success = argument_setup(esp, file_name, token_ptr);
+  if(!success)
+  {
+    free((char *)file_name);
+  }
+
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -312,9 +422,90 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if(success)
+    t->executable = file;
+  else
+    file_close (file);
   return success;
 }
+
+static void push_argv_stack(void **esp, const char *file_name, char *token, char **token_ptr, char ***argv, int* argc, int default_arg_num);
+static void word_alignment(void **esp);
+static void push_argv_addr_stack(void **esp, char ***argv, int argc);
+static void push_argc_stack(void **esp, int *argc);
+static void push_fake_return_addr_stack(void **esp);
+
+static bool
+argument_setup(void **esp, const char *file_name, char **token_ptr)
+{
+  char *token = NULL;
+  int argc = 0;
+  int default_arg_num = 4;
+  char **argv = malloc(default_arg_num * sizeof(char*));
+  push_argv_stack(esp, file_name, token, token_ptr, &argv, &argc, default_arg_num);
+  word_alignment(esp);
+  push_argv_addr_stack(esp, &argv, argc);
+  push_argc_stack(esp, &argc);
+  push_fake_return_addr_stack(esp);
+  free(argv);
+  return true;
+}
+static void
+push_argv_stack(void **esp, const char *file_name, char *token, char **token_ptr, char ***argv, int* argc, int default_arg_num)
+{
+  for (token = (char *) file_name; token != NULL; token = strtok_r(NULL, " ", token_ptr))
+  {
+    int argument_length = strlen(token);
+    *esp -= argument_length + 1;
+    (*argv)[*argc] = *esp;
+    (*argc)++; // arg 수 세기
+    // argc 예상보다 더 많으면 2배 메모리 realloc
+    if ((*argc) >=  default_arg_num)
+    {
+      default_arg_num *= 2;
+      (*argv) = realloc((*argv), default_arg_num * sizeof(char *));
+    }
+    // argument stack
+    memcpy(*esp, token, argument_length+1);
+  }
+  (*argv)[*argc] = 0;
+}
+static void
+word_alignment(void **esp)
+{
+  unsigned int word_align = 0;
+  if((word_align = (unsigned int) *esp %4) != 0)
+  {
+    *esp -= word_align;
+    memset(*esp, 0, word_align);
+  }
+}
+static void
+push_argv_addr_stack(void **esp, char ***argv, int argc)
+{
+  int i;
+  for (i=argc; i>=0; i--)
+  {
+    *esp -= sizeof(char *);
+    memcpy(*esp, &(*argv)[i], sizeof(char *));
+  }
+  char *token = *esp;
+  *esp -= sizeof(char **);
+  memcpy(*esp, &token, sizeof(char **));
+}
+static void
+push_argc_stack(void **esp, int *argc)
+{
+  *esp -= sizeof(int);
+  memcpy(*esp, argc, sizeof(int));
+}
+static void
+push_fake_return_addr_stack(void **esp)
+{
+  *esp -= sizeof(void *);
+  memset(*esp, 0, sizeof(void *));
+}
+
 
 /* load() helpers. */
 
