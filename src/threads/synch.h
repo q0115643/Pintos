@@ -34,6 +34,8 @@ bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
 
+void release_all_locks(void);
+
 /* Condition variable. */
 struct condition 
   {

@@ -14,6 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+void *malloc(size_t);
 
 //#define DEBUG
 
@@ -217,9 +218,6 @@ tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
-#ifdef DEBUG
-  printf("thread_create: 진입\n");
-#endif
   struct thread *t;
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
@@ -348,11 +346,8 @@ thread_tid (void)
 void
 thread_exit (void) 
 {
-#ifdef DEBUG
-    printf("thread_exit: 진입\n");
-#endif  
   ASSERT (!intr_context ());
-
+  release_all_locks();
 #ifdef USERPROG
   process_exit ();
 #endif

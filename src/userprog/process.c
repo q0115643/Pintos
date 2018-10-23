@@ -27,6 +27,66 @@ void *realloc(void *ptr, size_t size);
 
 //#define DEBUG
 
+void close_all_files(void)
+{
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  struct thread_fd *t_fd;
+  if(!list_empty(&cur->fd_list))
+  {
+    e = list_front(&cur->fd_list);
+    while(e!=list_end(&cur->fd_list))
+    {
+      t_fd = list_entry(e, struct thread_fd, elem);
+      e = list_remove(e);
+      filesys_acquire();
+      file_close(t_fd->file); // thread의 file descriptor들 다 닫기
+      filesys_release();
+      free(t_fd);
+    }
+  }
+  filesys_acquire();
+  file_close(cur->executable);
+  filesys_release();
+}
+int wait_child(tid_t child_tid)
+{
+  struct thread *cur = thread_current();
+  struct thread_child *child;
+  struct list_elem *e;
+  int status = TID_ERROR;
+  for(e=list_begin(&cur->child_list); e!=list_end(&cur->child_list); e=list_next(e))
+  {
+    child = list_entry(e, struct thread_child, elem);
+    if(child->tid == child_tid)
+    {
+      sema_down(&child->sema); //child exit할 때까지 기다린다. (process_exit에서)
+      status = child->status;
+      list_remove(e);
+      free(child);
+      break;
+    }
+  }
+  return status;
+}
+void alert_parent(void)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+  struct thread_child *child;
+  for(e=list_begin(&cur->parent->child_list); e!=list_end(&cur->parent->child_list); e=list_next(e))
+  {
+    child = list_entry(e, struct thread_child, elem);
+    if(child->tid==cur->tid)
+    {
+      child->exit = true;
+      child->status = cur->exit_status;
+      sema_up(&child->sema);
+      break;
+    }
+  }
+}
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -64,9 +124,6 @@ process_execute (const char *cmdline)
     palloc_free_page(cmd_copy2);
     cur->child_status = LOAD_FAILED;
     sema_up(&cur->load_sema); // load_sema는 syscall의 system_exec에서 기다리는 중
-#ifdef DEBUG
-    printf("process_execute: file이 없음\n");
-#endif
     return TID_ERROR;
   }
   file_close(file);
@@ -75,9 +132,6 @@ process_execute (const char *cmdline)
   tid = thread_create(file_name, PRI_DEFAULT, start_process, cmd_copy);
   if (tid == TID_ERROR)
   {
-#ifdef DEBUG
-    printf("process_execute: thread_create에서 온 값이 TID_ERROR\n");
-#endif
     palloc_free_page(cmd_copy);
     palloc_free_page(cmd_copy2);
     cur->child_status = LOAD_FAILED;
@@ -93,9 +147,6 @@ process_execute (const char *cmdline)
 static void
 start_process (void *f_name)
 {
-#ifdef DEBUG
-    printf("start_process: 진입\n");
-#endif
   char *file_name = (char *)f_name;
   char *token_ptr = NULL;
   struct intr_frame if_;
@@ -121,16 +172,10 @@ start_process (void *f_name)
   {
     cur->parent->child_status = LOAD_FAILED;
     sema_up(&cur->parent->load_sema);
-#ifdef DEBUG
-    printf("start_process: load가 뱉은 success가 false -> exit(-1)\n");
-#endif
     system_exit(-1);
   }
   else
   {
-#ifdef DEBUG
-    printf("start_process: load 성공\n");
-#endif
     cur->parent->child_status = LOAD_DONE;
     sema_up(&cur->parent->load_sema);
   }
@@ -156,22 +201,7 @@ start_process (void *f_name)
 int
 process_wait (tid_t child_tid) 
 {
-  struct thread *cur = thread_current();
-  struct thread_child *child;
-  struct list_elem *e;
-  int status = TID_ERROR;
-  for(e=list_begin(&cur->child_list); e!=list_end(&cur->child_list); e=list_next(e))
-  {
-    child = list_entry(e, struct thread_child, elem);
-    if(child->tid == child_tid)
-    {
-      sema_down(&child->sema); //child exit할 때까지 기다린다. (process_exit에서)
-      status = child->status;
-      list_remove(e);
-      free(child);
-      break;
-    }
-  }
+  int status = wait_child(child_tid);
   return status;
 }
 
@@ -179,44 +209,10 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-#ifdef DEBUG
-    printf("process_exit: 진입\n");
-#endif  
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  struct list_elem *e;
-  struct thread_child *child;
-  struct thread_fd *t_fd;
-
-  if(!list_empty(&cur->fd_list))
-  {
-    e = list_front(&cur->fd_list);
-    while(e!=list_end(&cur->fd_list))
-    {
-      t_fd = list_entry(e, struct thread_fd, elem);
-      e = list_remove(e);
-      filesys_acquire();
-      file_close(t_fd->file);
-      filesys_release();
-      free(t_fd);
-    }
-  }
-  filesys_acquire();
-  file_close(cur->executable);
-  filesys_release();
-
-  for(e=list_begin(&cur->parent->child_list); e!=list_end(&cur->parent->child_list); e=list_next(e))
-  {
-    child = list_entry(e, struct thread_child, elem);
-    if(child->tid==cur->tid)
-    {
-      child->exit = true;
-      child->status = cur->exit_status;
-      sema_up(&child->sema);
-      break;
-    }
-  }
-
+  alert_parent();  // change parent->child_list의 child->exit true로.
+  close_all_files();
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -328,9 +324,6 @@ static bool argument_setup(void **esp, const char *file_name, char **token_ptr);
 bool
 load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr) 
 {
-#ifdef DEBUG
-    printf("load: 진입\n");
-#endif
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -431,13 +424,7 @@ load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr)
 
   /* stack 생겼으니 argument 가져다 채우기 */
   success = argument_setup(esp, file_name, token_ptr);
-  if(!success)
-  {
-#ifdef DEBUG
-    printf("load: argument_setup 실패\n");
-#endif
-    free((char *)file_name);
-  }
+  if(!success) free((char *)file_name);
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -462,9 +449,6 @@ static void push_fake_return_addr_stack(void **esp);
 static bool
 argument_setup(void **esp, const char *file_name, char **token_ptr)
 {
-#ifdef DEBUG
-    printf("argument_setup: 진입\n");
-#endif
   char *token = NULL;
   int argc = 0;
   int default_arg_num = 4;

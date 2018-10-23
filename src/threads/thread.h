@@ -33,7 +33,7 @@ struct thread_fd
   {
     int fd;
     struct file *file;
-    struct list_elem elem;
+    struct list_elem elem;  // for fd_list
   };
 /* Thread Child. */
 struct thread_child
@@ -41,8 +41,8 @@ struct thread_child
     tid_t tid;
     bool exit;
     int status;
-    struct semaphore sema;
-    struct list_elem elem;
+    struct semaphore sema;  // for process wait
+    struct list_elem elem;  // for child_list
   };
 /* A kernel thread or user process.
 

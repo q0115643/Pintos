@@ -332,6 +332,18 @@ lock_release (struct lock *lock)
   intr_set_level (old_level);
 }
 
+void
+release_all_locks()
+{
+  struct thread *curr = thread_current ();
+  struct lock *lock;
+  while(!list_empty(&curr->lock_list))
+  {
+    lock = list_entry(list_pop_front(&curr->lock_list), struct lock, elem);
+    lock_release(lock);
+  }
+}
+
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */

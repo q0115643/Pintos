@@ -36,7 +36,6 @@ static void remove_file(int fd);
 
 static struct lock file_lock;
 
-
 void
 filesys_acquire(void)
 {
@@ -51,27 +50,12 @@ filesys_release(void)
 static inline void
 get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
 {
-#ifdef DEBUG
-    printf("get_arguments: 진입\n");
-#endif
 	while(argc--)
 	{
-		if(!is_user_vaddr((void *)esp))
-		{
-#ifdef DEBUG
-    	printf("get_arguments: esp가 invalid user vadder => system_exit(-1)\n");
-#endif
-  		system_exit(-1);
-		}
+		if(!is_user_vaddr((void *)esp)) system_exit(-1);
   	*(args++) = *(++esp);
 	}
-	if(!is_user_vaddr((void *)esp))
-	{
-#ifdef DEBUG
-    printf("get_arguments: esp가 invalid user vadder => system_exit(-1)\n");
-#endif
-		system_exit(-1);
-	}
+	if(!is_user_vaddr((void *)esp)) system_exit(-1);
 }
 
 void
@@ -84,33 +68,18 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-#ifdef DEBUG
-    printf("syscall_handler: 진입\n");
-#endif	
   int32_t args[3];
   unsigned int argc;
-  if(!is_user_vaddr(f->esp))
-  {
-#ifdef DEBUG
-    printf("syscall_handler: f->esp가 invalid user vaddr => system_exit(-1)\n");
-#endif
-  	system_exit(-1);
-  }
+  if(!is_user_vaddr(f->esp)) system_exit(-1);
   switch(*(int*)f->esp)
   {
   	case SYS_HALT:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_HALT\n");
-#endif  		
   		system_halt();
   		break;
   	}
   	case SYS_EXIT:
-  	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_EXIT\n");
-#endif  		
+  	{		
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		system_exit(args[0]);
@@ -118,19 +87,13 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_EXEC:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_EXEC\n");
-#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_exec((const char *)args[0]);
   		break;
   	}
   	case SYS_WAIT:
-  	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_WAIT\n");
-#endif  		
+  	{		
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_wait((pid_t)args[0]);
@@ -138,9 +101,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_CREATE:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_CREATE\n");
-#endif
   		argc = 2;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_create((const char*)args[0], (unsigned)args[1]);
@@ -148,9 +108,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_REMOVE:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_REMOVE\n");
-#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_remove((const char*)args[0]);
@@ -158,9 +115,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_OPEN:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_OPEN\n");
-#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_open((const char*)args[0]);
@@ -168,9 +122,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_FILESIZE:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_FILESIZE\n");
-#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
       f->eax = system_filesize((int)args[0]);
@@ -178,9 +129,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_READ:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_READ\n");
-#endif
   		argc = 3;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_read((int)args[0], (void*)args[1], (unsigned)args[2]);
@@ -188,9 +136,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_WRITE:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_WRITE\n");
-#endif
   		argc = 3;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_write((int)args[0], (const void*)args[1], (unsigned)args[2]);
@@ -198,9 +143,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_SEEK:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_SEEK\n");
-#endif
   		argc = 2;
   		get_arguments(f->esp, args, argc);
   		system_seek((int)args[0], (unsigned)args[1]);
@@ -208,9 +150,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_TELL:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_TELL\n");
-#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_tell((int)args[0]);
@@ -218,9 +157,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_CLOSE:
   	{
-#ifdef DEBUG
-    printf("syscall_handler: SYS_CLOSE\n");
-#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		system_close((int)args[0]);
@@ -232,17 +168,11 @@ syscall_handler (struct intr_frame *f UNUSED)
 static void
 system_halt(void)
 {
-#ifdef DEBUG
-    printf("system_halt: 진입\n");
-#endif		
 	power_off();
 }
 
 void system_exit(int status)
 {
-#ifdef DEBUG
-    printf("system_exit: 진입\n");
-#endif	
 	struct thread *cur = thread_current();
 	printf("%s: exit(%d)\n", thread_current()->name, status);
 	cur->exit_status = status;
@@ -252,16 +182,7 @@ void system_exit(int status)
 static pid_t
 system_exec(const char* cmd_line)
 {
-#ifdef DEBUG
-    printf("system_exec: 진입\n");
-#endif	
-	if(!is_user_vaddr((void*)cmd_line))
-	{
-#ifdef DEBUG
-    printf("system_exec: cmd_line이 invalid address -> system_exit(-1)\n");
-#endif	
-		system_exit(-1);
-	}
+	if(!is_user_vaddr((void*)cmd_line)) system_exit(-1);
 	pid_t pid;
 	struct thread* t = thread_current();
 	pid = process_execute(cmd_line);
@@ -272,18 +193,12 @@ system_exec(const char* cmd_line)
 static int
 system_wait(pid_t pid)
 {
-#ifdef DEBUG
-    printf("system_wait: 진입\n");
-#endif
 	return process_wait(pid);
 }
 
 static bool
 system_create(const char* file, unsigned initial_size)
 {
-#ifdef DEBUG
-    printf("system_create: 진입\n");
-#endif	
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
@@ -295,9 +210,6 @@ system_create(const char* file, unsigned initial_size)
 static bool
 system_remove(const char* file)
 {
-#ifdef DEBUG
-    printf("system_remove: 진입\n");
-#endif
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
@@ -308,33 +220,25 @@ system_remove(const char* file)
 
 static int
 system_open(const char* file)
-{
-#ifdef DEBUG
-    printf("system_open: 진입\n");
-#endif	
+{	
 	int fd = -1;
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
 	struct file *f = filesys_open(file);
+	if(f) fd = add_thread_file_descriptor(f);
 	filesys_release();
-	if(f)
-		fd = add_thread_file_descriptor(f);
 	return fd;
 }
 
 static int
 system_filesize(int fd)
 {
-#ifdef DEBUG
-    printf("system_filesize: 진입\n");
-#endif	
 	int size;
 	struct file *file;
 	filesys_acquire();
 	file = get_file_from_fd(fd);
-	if(file==NULL)
-		system_exit(-1);
+	if(file==NULL) system_exit(-1);
 	size = file_length(file);
 	filesys_release();
 	return size;
@@ -343,9 +247,6 @@ system_filesize(int fd)
 static int
 system_read(int fd, void* buffer, unsigned size)
 {
-#ifdef DEBUG
-    printf("system_read: 진입\n");
-#endif
 	struct file *file;
 	unsigned i;
 	int bytes = -1;
@@ -356,15 +257,13 @@ system_read(int fd, void* buffer, unsigned size)
 		for(i=0; i<size; i++)
 		{
 			*((uint8_t*)buffer + 1) = input_getc();
-			if(*((uint8_t*)buffer + 1) == 0)
-				break;
+			if(*((uint8_t*)buffer + 1) == 0) break;
 		}
 		bytes = i;
 	}
 	else
 	{
-		if(!is_user_vaddr(buffer+size))
-			system_exit(-1);
+		if(!is_user_vaddr(buffer+size)) system_exit(-1);
 		else
 		{
 			file = get_file_from_fd(fd);
@@ -382,13 +281,9 @@ system_read(int fd, void* buffer, unsigned size)
 static int
 system_write(int fd, const void* buffer, unsigned size)
 {
-#ifdef DEBUG
-    printf("system_write: 진입\n");
-#endif	
 	struct file *file;
 	int result = -1;
-	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer))
-		system_exit(-1);
+	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer)) system_exit(-1);
 	if(fd==STDOUT_FILENO)
 	{
 		putbuf(buffer, size);
@@ -396,8 +291,7 @@ system_write(int fd, const void* buffer, unsigned size)
 	}
 	else
 	{
-		if(!is_user_vaddr((void*)(buffer+size)))
-			system_exit(-1);
+		if(!is_user_vaddr((void*)(buffer+size))) system_exit(-1);
 		else
 		{
 			file = get_file_from_fd(fd);
@@ -407,8 +301,7 @@ system_write(int fd, const void* buffer, unsigned size)
 				result = file_write(file, buffer, size);
 				filesys_release();
 			}
-			else
-				result = 0;
+			else result = 0;
 		}
 	}
 	return result;
@@ -417,11 +310,7 @@ system_write(int fd, const void* buffer, unsigned size)
 static void
 system_seek(int fd, unsigned position)
 {
-#ifdef DEBUG
-    printf("system_seek: 진입\n");
-#endif	
-	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
-		system_exit(-1);
+	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	file = get_file_from_fd(fd);
 	if(file)
@@ -435,11 +324,7 @@ system_seek(int fd, unsigned position)
 static unsigned
 system_tell(int fd)
 {
-#ifdef DEBUG
-    printf("system_tell: 진입\n");
-#endif	
-	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
-		system_exit(-1);
+	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	unsigned int tell = 0;
 	file = get_file_from_fd(fd);
@@ -455,11 +340,7 @@ system_tell(int fd)
 static void
 system_close(int fd)
 {
-#ifdef DEBUG
-    printf("system_close: 진입\n");
-#endif	
-	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
-		system_exit(-1);
+	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	file = get_file_from_fd(fd);
 	if(file)
@@ -476,11 +357,9 @@ add_thread_file_descriptor(struct file *file)
 {
 	struct thread *cur = thread_current();
 	struct thread_fd *t_fd = (struct thread_fd *) malloc (sizeof (struct thread_fd));
-
 	t_fd->fd = cur->fd_count++; // 현재 최대 번호가 주어지고 count 늘어남 => 다음 번에는 다른 번호.
 	t_fd->file = file;
 	list_push_back(&cur->fd_list, &t_fd->elem);
-
 	return t_fd->fd;
 }
 
@@ -490,14 +369,12 @@ get_file_from_fd(int fd)
 	struct thread *cur = thread_current();
 	struct thread_fd *t_fd;
 	struct list_elem *e;
-	if(fd<2 || fd>cur->fd_count)
-		return NULL;
+	if(fd<2 || fd>cur->fd_count) return NULL;
 	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list);
 			e=list_next(e))
 	{
 		t_fd = list_entry(e, struct thread_fd, elem);
-		if(t_fd->fd ==fd)
-			return t_fd->file;
+		if(t_fd->fd ==fd) return t_fd->file;
 	}
 	return NULL;
 }
@@ -508,8 +385,7 @@ remove_file(int fd)
 	struct thread *cur = thread_current();
 	struct thread_fd *t_fd;
 	struct list_elem *e;
-	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list);
-			e=list_next(e))
+	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list); e=list_next(e))
 	{
 		t_fd = list_entry(e, struct thread_fd, elem);
 		if(t_fd->fd == fd)
