@@ -28,11 +28,15 @@ static void system_seek(int fd, unsigned position);
 static unsigned system_tell(int fd);
 static void system_close(int fd);
 
+//#define DEBUG
+
 static int add_thread_file_descriptor(struct file *file);
 static struct file * get_file_from_fd(int fd);
 static void remove_file(int fd);
 
 static struct lock file_lock;
+
+
 void
 filesys_acquire(void)
 {
@@ -47,15 +51,27 @@ filesys_release(void)
 static inline void
 get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
 {
-	ASSERT(1<=argc && argc<=3);
+#ifdef DEBUG
+    printf("get_arguments: 진입\n");
+#endif
 	while(argc--)
 	{
-		if(is_user_vaddr((void *)esp))
+		if(!is_user_vaddr((void *)esp))
+		{
+#ifdef DEBUG
+    	printf("get_arguments: esp가 invalid user vadder => system_exit(-1)\n");
+#endif
   		system_exit(-1);
+		}
   	*(args++) = *(++esp);
 	}
-	if(is_user_vaddr((void *)esp))
+	if(!is_user_vaddr((void *)esp))
+	{
+#ifdef DEBUG
+    printf("get_arguments: esp가 invalid user vadder => system_exit(-1)\n");
+#endif
 		system_exit(-1);
+	}
 }
 
 void
@@ -68,19 +84,33 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+#ifdef DEBUG
+    printf("syscall_handler: 진입\n");
+#endif	
   int32_t args[3];
   unsigned int argc;
-  if(is_user_vaddr(f->esp))
+  if(!is_user_vaddr(f->esp))
+  {
+#ifdef DEBUG
+    printf("syscall_handler: f->esp가 invalid user vaddr => system_exit(-1)\n");
+#endif
   	system_exit(-1);
+  }
   switch(*(int*)f->esp)
   {
   	case SYS_HALT:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_HALT\n");
+#endif  		
   		system_halt();
   		break;
   	}
   	case SYS_EXIT:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_EXIT\n");
+#endif  		
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		system_exit(args[0]);
@@ -88,6 +118,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_EXEC:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_EXEC\n");
+#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_exec((const char *)args[0]);
@@ -95,6 +128,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_WAIT:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_WAIT\n");
+#endif  		
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_wait((pid_t)args[0]);
@@ -102,6 +138,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_CREATE:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_CREATE\n");
+#endif
   		argc = 2;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_create((const char*)args[0], (unsigned)args[1]);
@@ -109,6 +148,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_REMOVE:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_REMOVE\n");
+#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_remove((const char*)args[0]);
@@ -116,6 +158,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_OPEN:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_OPEN\n");
+#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_open((const char*)args[0]);
@@ -123,6 +168,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_FILESIZE:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_FILESIZE\n");
+#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
       f->eax = system_filesize((int)args[0]);
@@ -130,6 +178,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_READ:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_READ\n");
+#endif
   		argc = 3;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_read((int)args[0], (void*)args[1], (unsigned)args[2]);
@@ -137,6 +188,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_WRITE:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_WRITE\n");
+#endif
   		argc = 3;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_write((int)args[0], (const void*)args[1], (unsigned)args[2]);
@@ -144,6 +198,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_SEEK:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_SEEK\n");
+#endif
   		argc = 2;
   		get_arguments(f->esp, args, argc);
   		system_seek((int)args[0], (unsigned)args[1]);
@@ -151,6 +208,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_TELL:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_TELL\n");
+#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		f->eax = system_tell((int)args[0]);
@@ -158,6 +218,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   	}
   	case SYS_CLOSE:
   	{
+#ifdef DEBUG
+    printf("syscall_handler: SYS_CLOSE\n");
+#endif
   		argc = 1;
   		get_arguments(f->esp, args, argc);
   		system_close((int)args[0]);
@@ -169,13 +232,19 @@ syscall_handler (struct intr_frame *f UNUSED)
 static void
 system_halt(void)
 {
+#ifdef DEBUG
+    printf("system_halt: 진입\n");
+#endif		
 	power_off();
 }
 
 void system_exit(int status)
 {
+#ifdef DEBUG
+    printf("system_exit: 진입\n");
+#endif	
 	struct thread *cur = thread_current();
-	printf("%s: exit(%d\n", thread_current()->name, status);
+	printf("%s: exit(%d)\n", thread_current()->name, status);
 	cur->exit_status = status;
 	thread_exit();
 }
@@ -183,8 +252,16 @@ void system_exit(int status)
 static pid_t
 system_exec(const char* cmd_line)
 {
+#ifdef DEBUG
+    printf("system_exec: 진입\n");
+#endif	
 	if(!is_user_vaddr((void*)cmd_line))
+	{
+#ifdef DEBUG
+    printf("system_exec: cmd_line이 invalid address -> system_exit(-1)\n");
+#endif	
 		system_exit(-1);
+	}
 	pid_t pid;
 	struct thread* t = thread_current();
 	pid = process_execute(cmd_line);
@@ -195,12 +272,18 @@ system_exec(const char* cmd_line)
 static int
 system_wait(pid_t pid)
 {
+#ifdef DEBUG
+    printf("system_wait: 진입\n");
+#endif
 	return process_wait(pid);
 }
 
 static bool
 system_create(const char* file, unsigned initial_size)
 {
+#ifdef DEBUG
+    printf("system_create: 진입\n");
+#endif	
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
@@ -212,6 +295,9 @@ system_create(const char* file, unsigned initial_size)
 static bool
 system_remove(const char* file)
 {
+#ifdef DEBUG
+    printf("system_remove: 진입\n");
+#endif
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
@@ -223,6 +309,9 @@ system_remove(const char* file)
 static int
 system_open(const char* file)
 {
+#ifdef DEBUG
+    printf("system_open: 진입\n");
+#endif	
 	int fd = -1;
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
@@ -237,6 +326,9 @@ system_open(const char* file)
 static int
 system_filesize(int fd)
 {
+#ifdef DEBUG
+    printf("system_filesize: 진입\n");
+#endif	
 	int size;
 	struct file *file;
 	filesys_acquire();
@@ -251,6 +343,9 @@ system_filesize(int fd)
 static int
 system_read(int fd, void* buffer, unsigned size)
 {
+#ifdef DEBUG
+    printf("system_read: 진입\n");
+#endif
 	struct file *file;
 	unsigned i;
 	int bytes = -1;
@@ -287,6 +382,9 @@ system_read(int fd, void* buffer, unsigned size)
 static int
 system_write(int fd, const void* buffer, unsigned size)
 {
+#ifdef DEBUG
+    printf("system_write: 진입\n");
+#endif	
 	struct file *file;
 	int result = -1;
 	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer))
@@ -319,6 +417,9 @@ system_write(int fd, const void* buffer, unsigned size)
 static void
 system_seek(int fd, unsigned position)
 {
+#ifdef DEBUG
+    printf("system_seek: 진입\n");
+#endif	
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
 		system_exit(-1);
 	struct file *file;
@@ -334,6 +435,9 @@ system_seek(int fd, unsigned position)
 static unsigned
 system_tell(int fd)
 {
+#ifdef DEBUG
+    printf("system_tell: 진입\n");
+#endif	
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
 		system_exit(-1);
 	struct file *file;
@@ -351,6 +455,9 @@ system_tell(int fd)
 static void
 system_close(int fd)
 {
+#ifdef DEBUG
+    printf("system_close: 진입\n");
+#endif	
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO)
 		system_exit(-1);
 	struct file *file;

@@ -25,6 +25,8 @@ void free(void *ptr);
 void *malloc(size_t);
 void *realloc(void *ptr, size_t size);
 
+//#define DEBUG
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -62,6 +64,9 @@ process_execute (const char *cmdline)
     palloc_free_page(cmd_copy2);
     cur->child_status = LOAD_FAILED;
     sema_up(&cur->load_sema); // load_sema는 syscall의 system_exec에서 기다리는 중
+#ifdef DEBUG
+    printf("process_execute: file이 없음\n");
+#endif
     return TID_ERROR;
   }
   file_close(file);
@@ -70,6 +75,9 @@ process_execute (const char *cmdline)
   tid = thread_create(file_name, PRI_DEFAULT, start_process, cmd_copy);
   if (tid == TID_ERROR)
   {
+#ifdef DEBUG
+    printf("process_execute: thread_create에서 온 값이 TID_ERROR\n");
+#endif
     palloc_free_page(cmd_copy);
     palloc_free_page(cmd_copy2);
     cur->child_status = LOAD_FAILED;
@@ -85,6 +93,9 @@ process_execute (const char *cmdline)
 static void
 start_process (void *f_name)
 {
+#ifdef DEBUG
+    printf("start_process: 진입\n");
+#endif
   char *file_name = (char *)f_name;
   char *token_ptr = NULL;
   struct intr_frame if_;
@@ -110,14 +121,19 @@ start_process (void *f_name)
   {
     cur->parent->child_status = LOAD_FAILED;
     sema_up(&cur->parent->load_sema);
+#ifdef DEBUG
+    printf("start_process: load가 뱉은 success가 false -> exit(-1)\n");
+#endif
     system_exit(-1);
   }
   else
   {
+#ifdef DEBUG
+    printf("start_process: load 성공\n");
+#endif
     cur->parent->child_status = LOAD_DONE;
     sema_up(&cur->parent->load_sema);
   }
-
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -163,6 +179,9 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
+#ifdef DEBUG
+    printf("process_exit: 진입\n");
+#endif  
   struct thread *cur = thread_current ();
   uint32_t *pd;
   struct list_elem *e;
@@ -309,6 +328,9 @@ static bool argument_setup(void **esp, const char *file_name, char **token_ptr);
 bool
 load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr) 
 {
+#ifdef DEBUG
+    printf("load: 진입\n");
+#endif
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -411,6 +433,9 @@ load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr)
   success = argument_setup(esp, file_name, token_ptr);
   if(!success)
   {
+#ifdef DEBUG
+    printf("load: argument_setup 실패\n");
+#endif
     free((char *)file_name);
   }
 
@@ -424,7 +449,7 @@ load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr)
   if(success)
     t->executable = file;
   else
-    file_close (file);
+    file_close(file);
   return success;
 }
 
@@ -437,6 +462,9 @@ static void push_fake_return_addr_stack(void **esp);
 static bool
 argument_setup(void **esp, const char *file_name, char **token_ptr)
 {
+#ifdef DEBUG
+    printf("argument_setup: 진입\n");
+#endif
   char *token = NULL;
   int argc = 0;
   int default_arg_num = 4;
