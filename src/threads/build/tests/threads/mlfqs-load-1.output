@@ -1,0 +1,25 @@
+Writing command line to /tmp/jqJw_qrgyM.dsk...
+warning: can't find squish-pty, so terminal input will fail
+bochs -q
+Kernel command line: -q -mlfqs run mlfqs-load-1
+Pintos booting with 4,096 kB RAM...
+374 pages available in kernel pool.
+374 pages available in user pool.
+Calibrating timer...  204,600 loops/s.
+Boot complete.
+Executing 'mlfqs-load-1':
+(mlfqs-load-1) begin
+(mlfqs-load-1) spinning for up to 45 seconds, please wait...
+(mlfqs-load-1) FAIL: load average stayed below 0.5 for more than 45 seconds
+Kernel PANIC at ../../tests/threads/tests.c:93 in fail(): test failed
+Call stack: 0xc002fed8Interrupt 0x0e (#PF Page-Fault Exception) at eip=0xc0105602
+ cr2=0000005d error=00000000
+ eax=0000005d ebx=0000005d ecx=c002fe04 edx=000003d4
+ esi=c010c500 edi=c010dcd5 esp=c010d733 ebp=c002fe98
+ cs=0008 ds=0010 es=0010 ss=fed8
+Kernel PANIC recursion at ../../threads/interrupt.c:373 in intr_handler().
+Timer: 4640 ticks
+Thread: 0 idle ticks, 4640 kernel ticks, 0 user ticks
+Console: 859 characters output
+Keyboard: 0 keys pressed
+Powering off...
