@@ -604,6 +604,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Project 3-1, palloc --> frame_allco change */
       //uint8_t *kpage = palloc_get_page (PAL_USER);
       uint8_t *kpage = frame_alloc (PAL_USER);
+      
       if (kpage == NULL)
         return false;
 

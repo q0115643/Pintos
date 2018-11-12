@@ -137,6 +137,10 @@ struct thread
     /* 여러 개의 lock을 들고 있는 경우 */
     struct list lock_list;
 
+
+    /* Project 3-1, Sub Page Table 생성 */
+    struct list page_table;
+    struct lock page_table_lock;
   };
 
 /* If false (default), use round-robin scheduler.
