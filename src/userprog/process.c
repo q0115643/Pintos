@@ -157,6 +157,9 @@ start_process (void *f_name)
 
   file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기
 
+  /* Project 3-1, Page Table Init */
+  page_table_init();
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -519,7 +522,7 @@ push_fake_return_addr_stack(void **esp)
   memset(*esp, 0, sizeof(void *));
 }
 
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -604,7 +607,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Project 3-1, palloc --> frame_allco change */
       //uint8_t *kpage = palloc_get_page (PAL_USER);
       uint8_t *kpage = frame_alloc (PAL_USER);
-      
+
       if (kpage == NULL)
         return false;
 

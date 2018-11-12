@@ -1,6 +1,7 @@
 #include "threads/thread.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "userprog/process.h"
 
 
 void
@@ -33,8 +34,30 @@ page_get_elem_from_addr(void *addr)
 bool
 page_load_file(struct page_elem *page)
 {
-	return false;
+	uint8_t *frame = frame_alloc(PAL_USER);
+	if(frame == NULL) return false;
+	if(page->read_bytes == 0) return false;
 
+	file_seek(page->file, page->offset);
+	if(file_read_at(page->file, frame, page->read_bytes, page->offset) != page->read_bytes)
+	{
+		frame_free(frame);
+		return false;
+	}
+
+	memset(frame + page->read_bytes, 0, page->zero_bytes);
+
+
+
+	page->check_loaded = true;
+	return true;
+
+}
+
+bool
+page_load_swap(struct page_elem *page)
+{
+	return false;
 }
 
 
@@ -46,12 +69,23 @@ page_fault_handler(void * addr)
 	if(page == NULL) return false;
 
 	bool success = false;
-	if(page->state == PAGE_FILE)
+	if(page->state == 0)
 	{
 		success = page_load_file(page);
+		return success;
+	}
+	else if(page->state == 1)
+	{
+		success = page_load_swap(page);
+		return success;
+
+	} else {
+
 		return success;
 	}
 
 	return false;
 
 }
+
+

@@ -22,7 +22,8 @@
 #include "threads/synch.h"
 #include <list.h>
 
-#define PAGE_FILE 1;
+#define PAGE_FILE 0;
+#define PAGE_SWAP 1;
 
 
 struct page_elem
@@ -47,5 +48,6 @@ struct page_elem
 void page_table_init();
 bool page_fault_handler(void *addr);
 bool page_load_file(struct page_elem *page);
+bool page_load_swap(struct page_elem *page);
 bool page_init(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 
