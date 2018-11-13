@@ -221,7 +221,7 @@ process_exit (void)
   close_all_files();
 
   /* Project 3-1, Page Table exit() */
-  // 
+  page_table_clear();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -530,7 +530,7 @@ push_fake_return_addr_stack(void **esp)
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+//static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -599,7 +599,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  //file_seek (file, ofs);
+  file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Do calculate how to fill this page.
@@ -617,25 +617,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (kpage == NULL)
         return false;
       */
-      struct page_elem *page = malloc(sizeof(struct page_elem));
-      if(page == NULL) return false;
 
-      page->page_owner = thread_current();
-      page->file = file;
-      page->offset = ofs;
-      page->addr = upage;
-      page->read_bytes = page_read_bytes;
-      page->zero_bytes = page_zero_bytes;
-      page->writable = writable;
-      page->check_loaded = false;
-      page->state = PAGE_FILE;
-
-      struct list *page_table = &thread_current()->page_table;
-      struct lock *page_table_lock = &thread_current()->page_table_lock;
-
-      lock_acquire(page_table_lock);
-      list_push_back(page_table, &page->elem);
-      lock_release(page_table_lock);
+      if(!page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable))
+      {
+        return false;
+      }
 
       /* Load this page. */
       /*
@@ -659,9 +645,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       upage += PGSIZE;
       ofs += PGSIZE;
     }
-  file_seek (file, ofs);
+  //file_seek (file, ofs);
   return true;
 }
+
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
@@ -694,7 +681,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();

@@ -147,20 +147,33 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
+  bool success = false;
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+
+  if (not_present && is_user_vaddr(fault_addr))
+  {
+    struct page_elem *page = page_get_elem_from_addr(fault_addr);
+    if (page != NULL)
+    {
+      success = page_fault_handler(page);
+    }
+  }
+
   /* 위 cause 모두 exit으로 */
+  /*
   if (not_present || write || user) {
     system_exit(-1);
-  }
+  }*/
 
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  if(!page_fault_handler(fault_addr))
+  if(!success)
   {
     printf ("Page fault at %p: %s error %s page in %s context.\n",
             fault_addr,
