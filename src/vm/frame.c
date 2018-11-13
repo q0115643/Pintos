@@ -14,6 +14,19 @@ frame_init(void)
 	list_init(&frame_table);
 }
 
+/* frame manager(lock) 관련, acquire 및 release */
+void
+frame_lock_acquire(void)
+{
+	lock_acquire(&frame_manager);
+}
+
+void
+frame_lock_release(void)
+{
+	lock_release(&frame_manager);
+}
+
 /* frame table에 새로운 frame 넣기 */
 void
 frame_set_elem(void *frame)
@@ -26,9 +39,9 @@ frame_set_elem(void *frame)
 
 	/* frame table(list)에 넣어야 함 */
 	/* lock 안걸어주면, panic */
-	lock_acquire(&frame_manager);
+	frame_lock_acquire();
 	list_push_back(&frame_table, &new_frame->elem);
-	lock_release(&frame_manager);
+	frame_lock_release();
 
 	return;
 
@@ -89,7 +102,7 @@ frame_delete_elem(void *frame)
 {
 	struct list_elem *e;
 	/* lock 안걸어주면, panic */
-	lock_acquire(&frame_manager);
+	frame_lock_acquire();
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		struct frame_elem *tmp_frame = list_entry(e, struct frame_elem, elem);
@@ -101,7 +114,7 @@ frame_delete_elem(void *frame)
 			break;
 		}
 	}
-	lock_release(&frame_manager);
+	frame_lock_release();
 }
 
 /* frame table에서 frame 해제 */

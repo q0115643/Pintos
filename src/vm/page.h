@@ -30,6 +30,7 @@ struct page_elem
 {
 	size_t state;
 
+	struct thread *page_owner;
 	struct list_elem elem;
 	void * addr;
 

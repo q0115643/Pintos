@@ -18,6 +18,8 @@ struct frame_elem {
 };
 
 void frame_init(void);
+void frame_lock_acquire(void);
+void frame_lock_release(void);
 void frame_set_elem(void *frame);
 void *frame_alloc(enum palloc_flags flags);
 bool frame_victim(void);
