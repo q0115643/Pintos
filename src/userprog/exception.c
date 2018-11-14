@@ -174,6 +174,40 @@ page_fault (struct intr_frame *f)
 #endif
 
 
+  if(is_kernel_vaddr(fault_addr) && user){
+    system_exit(-1);
+  }
+  bool stack = false;
+  if(is_user_vaddr(fault_addr) && not_present){
+    //stack growing
+    if(fault_addr >= f->esp-32){
+      stack = true;
+    }
+    //load
+    //load = page_fault_handler(fault_addr, stack);
+    struct page *page = ptable_lookup(fault_addr);
+    if(!page)
+    {
+      //stack growth
+      system_exit(-1);
+    }
+    else
+    {
+      if(!page->loaded)
+      {
+        success = page_load_file(page);
+      }
+    }
+  }
+
+  // for write denying in code
+  if(is_user_vaddr(fault_addr) && !not_present){
+    struct page *page = ptable_lookup(fault_addr);
+    if(!page->writable){
+      system_exit(-1);
+    }
+  }
+/*
 #ifdef VM
   if(not_present && is_user_vaddr(fault_addr))
   {
@@ -216,15 +250,15 @@ page_fault (struct intr_frame *f)
 #ifdef DEBUG
       printf("page_fault(): !page\n");
 #endif
-      // stack growth
+      // stack growth & page fault
     }
     frame_release();
   }
 #endif
-
+*/
   /* 1. unmapped virtual memory 접근 
      2. write to read-only page
-     3. access to kernel space by user */
+     3. access to kernel space by user *//*
   if(not_present || write || user)
   {
 #ifdef DEBUG
@@ -232,7 +266,7 @@ page_fault (struct intr_frame *f)
 #endif
     system_exit(-1);
   }
-
+*/
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
