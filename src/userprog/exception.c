@@ -6,8 +6,15 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
-#include "vm/page.h"
+
+#define MAX_STACK_SIZE 8 * 1024 * 1024
+
+#ifdef VM
 #include "vm/frame.h"
+#include "vm/page.h"
+#endif
+
+//#define DEBUG
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -126,11 +133,17 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
+#ifdef DEBUG
+  printf("page_fault(): 진입\n");
+#endif
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-
+#ifdef VM
+  struct page* page;
+#endif
+  bool success = false;
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -147,28 +160,75 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-  bool success = false;
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef DEBUG
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+#endif
 
-  if (not_present && is_user_vaddr(fault_addr))
+
+#ifdef VM
+  if(not_present)
   {
-    struct page_elem *page = page_get_elem_from_addr(fault_addr);
-    if (page != NULL)
+    page = ptable_lookup(fault_addr);
+    if(page)
     {
-      success = page_fault_handler(page);
+      // swap, file, zero
+      if(!page->loaded)
+      {
+#ifdef DEBUG
+        printf("page_fault(): !page->loaded\n");
+#endif
+        success = page_load_file(page);
+        if(success)
+        {
+#ifdef DEBUG
+          printf("page_fault(): page_load_file 성공\n");
+#endif
+          page->loaded = true;
+          return;
+        }
+        else
+        {
+#ifdef DEBUG
+          printf("page_fault(): page_load_file 실패******\n");
+#endif
+        }
+      }
+      else
+      {
+#ifdef DEBUG
+        printf("page_fault(): page->loaded\n");
+#endif
+      }
+    }
+    else
+    {
+#ifdef DEBUG
+      printf("page_fault(): !page\n");
+#endif
+      // stack growth
     }
   }
+#endif
 
-  /* 위 cause 모두 exit으로 */
-  /*
-  if (not_present || write || user) {
+  /* 1. unmapped virtual memory 접근 
+     2. write to read-only page
+     3. access to kernel space by user */
+  if(not_present || write || user)
+  {
+#ifdef DEBUG
+    printf("page_fault(): not_present || write || user 이거에 걸려서 exit(-1)\n");
+#endif
     system_exit(-1);
-  }*/
-
+  }
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

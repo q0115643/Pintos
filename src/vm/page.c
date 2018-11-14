@@ -1,142 +1,163 @@
-#include "threads/thread.h"
-#include "vm/frame.h"
 #include "vm/page.h"
+#include <debug.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
+#include <hash.h>
+#include <user/syscall.h>
+#include "filesys/file.h"
+#include "threads/malloc.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "userprog/pagedir.h"
+#include "userprog/syscall.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 #include "userprog/process.h"
 
-#define DEBUG
+//#define DEBUG
 
-void
-page_table_init(void)
+static void
+page_destroy_function (struct hash_elem *e, void *aux UNUSED);
+
+/* page 구조체에서 upage를 이용하여 hashing */
+unsigned
+ptable_hash (const struct hash_elem *p_, void *aux UNUSED)
 {
-	struct thread *t = thread_current();
-	list_init(&t->page_table);
-	lock_init(&t->page_table_lock);
+  const struct page *p = hash_entry(p_, struct page, hash_elem);
+  return hash_bytes (&p->upage, sizeof p->upage); // hash_bytes: Returns a hash of the size bytes starting at buf
 }
 
-
-void
-page_table_clear(void)
-{
-	struct list *page_table = &thread_current()->page_table;
-
-	struct list_elem *e;
-	for (e = list_begin(page_table); e != list_end(page_table); e = list_next(e))
-	{
-		struct page_elem *page = list_entry(e, struct page_elem, elem);
-		frame_free(pagedir_get_page(thread_current()->pagedir, page->addr));
-		pagedir_clear_page(thread_current()->pagedir, page->addr);
-
-	}
-}
-
+/* less 함수는 upage 주소를 비교 */
 bool
+ptable_less (const struct hash_elem *a_, const struct hash_elem *b_,
+           void *aux UNUSED)
+{
+  const struct page *a = hash_entry(a_, struct page, hash_elem);
+  const struct page *b = hash_entry(b_, struct page, hash_elem);
+
+  return a->upage < b->upage;
+}
+
+void
+ptable_init(struct hash *ptable)
+{
+#ifdef DEBUG
+	printf("ptable_init(): 진입\n");
+#endif
+	if(!hash_init(ptable, ptable_hash, ptable_less, NULL)) system_exit(-1);
+}
+
+struct page*
 page_create(struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
-	struct page_elem *page = malloc(sizeof(struct page_elem));
-    if(page == NULL) return false;
-    //printf("LOAD HERE!!!!");
-
-	page->page_owner = thread_current();
-	page->file = file;
-	page->offset = ofs;
-	page->addr = upage;
-	page->read_bytes = read_bytes;
-	page->zero_bytes = zero_bytes;
-	page->writable = writable;
-	page->check_loaded = false;
-	page->state = PAGE_FILE;
-
-	struct list *page_table = &thread_current()->page_table;
-	struct lock *page_table_lock = &thread_current()->page_table_lock;
-
-	lock_acquire(page_table_lock);
-	list_push_back(page_table, &page->elem);
-	lock_release(page_table_lock);
-
-	return true;
-
-}
-
-struct page_elem* 
-page_get_elem_from_addr(void *addr)
-{
-	struct thread *t = thread_current();
-	struct list *page_table = &t->page_table;
-	struct list_elem *e;
-	addr = pg_round_down(addr);
-	for(e = list_begin(page_table); e != list_end(page_table); e = list_next(e))
-	{
-		struct page_elem *tmp_page = list_entry(e, struct page_elem, elem);
-		if(tmp_page->addr == addr)
-		{
-			return tmp_page;
-		}
-	}
-
-	return NULL;
-
+#ifdef DEBUG
+	printf("page_create(): 진입\n");
+#endif
+	struct page *page = malloc(sizeof(struct page));
+  page->file = file;
+  page->offset = ofs;
+  page->upage = upage;
+  page->read_bytes = read_bytes;
+  page->zero_bytes = zero_bytes;
+  page->writable = writable;
+  page->loaded = false;
+  return page;
 }
 
 bool
-page_load_file(struct page_elem *page)
-{
-	uint8_t *frame = frame_alloc(PAL_USER);
-	if(frame == NULL) return false;
-	if(page->read_bytes == 0) return false;
-
-	file_seek(page->file, page->offset);
-	if(file_read_at(page->file, frame, page->read_bytes, page->offset) != page->read_bytes)
-	{
-		frame_free(frame);
-		return false;
-	}
-
-	memset(frame + page->read_bytes, 0, page->zero_bytes);
-	if(!install_page(page->addr, frame, page->writable))
-	{
-		frame_free(frame);
-		return false;
-	}
-
-	page->check_loaded = true;
-	return true;
-
-}
-
-bool
-page_load_swap(struct page_elem *page)
-{
-	return false;
-}
-
-
-
-bool
-page_fault_handler(struct page_elem * page)
+ptable_insert(struct page *page)
 {
 #ifdef DEBUG
-	printf("[page fault handler]\n");
+	printf("ptable_insert(): 진입\n");
 #endif
-
-	bool success = false;
-	if(page->state == 0)
+	if(!hash_insert(&thread_current()->page_table, &page->hash_elem))
 	{
-		success = page_load_file(page);
-		return success;
+#ifdef DEBUG
+		printf("ptable_insert(): 성공\n");
+#endif
+    return true;
 	}
-	else if(page->state == 1)
-	{
-		success = page_load_swap(page);
-		return success;
-
-	} else {
-
-		return success;
-	}
-	frame_lock_release();
-	return false;
-
+  return false;
 }
 
+struct page*
+ptable_lookup(void* addr)
+{
+#ifdef DEBUG
+	printf("ptable_lookup(): 진입\n");
+#endif
+	void* rounded_addr;
+	rounded_addr = pg_round_down(addr);
+	struct page page;
+	struct hash_elem *e;
+	page.upage = rounded_addr;
+	e = hash_find(&thread_current()->page_table, &page.hash_elem);
+	if(e)
+		return hash_entry(e, struct page, hash_elem);
+	return NULL;
+}
+
+bool
+page_load_file(struct page *page)
+{
+#ifdef DEBUG
+	printf("page_load_file(): 진입\n");
+#endif
+	struct thread *cur = thread_current();
+	uint8_t *kpage = frame_alloc(PAL_USER); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
+	if(!kpage) return false;
+	filesys_acquire();
+	if(file_read_at(page->file, kpage, page->read_bytes, page->offset) != page->read_bytes)
+	{
+#ifdef DEBUG
+		printf("page_load_file(): file_read_at()이 실패 -> return false******\\n");
+#endif
+		filesys_release();
+		frame_free(kpage);
+		return false;
+	}
+	filesys_release();
+	memset(kpage + page->read_bytes, 0, page->zero_bytes);
+	if(!install_page(page->upage, kpage, page->writable))
+	{
+#ifdef DEBUG
+		printf("page_load_file(): install_page()이 실패 -> return false******\\n");
+#endif
+		filesys_acquire();
+		frame_free(kpage);
+		filesys_release();
+		return false;
+	}
+	page->loaded = true;
+	pagedir_set_accessed(cur->pagedir, page->upage, true);
+	return true;
+}
+
+void
+ptable_clear()
+{
+	struct list *page_table = &thread_current()->page_table;
+	hash_destroy (page_table, page_destroy_function);
+}
+
+/* destroy & free elements in page table */
+static void
+page_destroy_function (struct hash_elem *e, void *aux UNUSED)
+{
+	struct thread *cur = thread_current();
+  struct page *page;
+  void *kpage;
+  page = hash_entry(e, struct page, hash_elem);
+  kpage = pagedir_get_page(cur->pagedir, page->upage);
+  if (kpage != NULL)
+  {
+    	frame_acquire();
+      pagedir_clear_page(cur->pagedir, page->upage);
+      frame_free(kpage);
+      frame_release();
+  }
+  free(page);
+}
 

@@ -18,9 +18,11 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+
+#ifdef VM
 #include "vm/frame.h"
 #include "vm/page.h"
-
+#endif
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char** token_ptr);
@@ -97,6 +99,9 @@ void alert_parent(void)
 tid_t
 process_execute (const char *cmdline) 
 {
+#ifdef DEBUG
+  printf("process_execute(): 진입\n");
+#endif
   char *cmd_copy;
   char *cmd_copy2;
   char *file_name;
@@ -150,16 +155,20 @@ process_execute (const char *cmdline)
 static void
 start_process (void *f_name)
 {
+#ifdef DEBUG
+  printf("start_process(): 진입\n");
+#endif
   char *file_name = (char *)f_name;
   char *token_ptr = NULL;
   struct intr_frame if_;
   bool success;
   struct thread *cur = thread_current();
 
-  file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기
+#ifdef VM
+  ptable_init(&cur->page_table);
+#endif
 
-  /* Project 3-1, Page Table Init */
-  page_table_init();
+  file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -176,12 +185,18 @@ start_process (void *f_name)
   palloc_free_page (file_name);
   if (!success)
   {
+#ifdef DEBUG
+    printf("start_process: load() 실패********\n");
+#endif
     cur->parent->child_status = LOAD_FAILED;
     sema_up(&cur->parent->load_sema);
     system_exit(-1);
   }
   else
   {
+#ifdef DEBUG
+    printf("start_process: load() 성공\n");
+#endif
     cur->parent->child_status = LOAD_DONE;
     sema_up(&cur->parent->load_sema);
   }
@@ -207,6 +222,9 @@ start_process (void *f_name)
 int
 process_wait (tid_t child_tid) 
 {
+#ifdef DEBUG
+  printf("process_wait(): 진입\n");
+#endif
   int status = wait_child(child_tid);
   return status;
 }
@@ -219,10 +237,13 @@ process_exit (void)
   uint32_t *pd;
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
-
-  /* Project 3-1, Page Table exit() */
-  page_table_clear();
-
+#ifdef VM
+  frame_acquire ();
+  filesys_acquire ();
+  ptable_clear();
+  filesys_release ();
+  frame_release ();
+#endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -334,6 +355,9 @@ static bool argument_setup(void **esp, const char *file_name, char **token_ptr);
 bool
 load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr) 
 {
+#ifdef DEBUG
+  printf("load(): 진입\n");
+#endif
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -420,7 +444,12 @@ load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr)
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
+              {
+#ifdef DEBUG
+                printf("load(): load_segment() 확인 결과 false => goto done******\\n");
+#endif
                 goto done;
+              }
             }
           else
             goto done;
@@ -527,10 +556,10 @@ push_fake_return_addr_stack(void **esp)
   memset(*esp, 0, sizeof(void *));
 }
 
-
+
 /* load() helpers. */
 
-//static bool install_page (void *upage, void *kpage, bool writable);
+bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -595,6 +624,9 @@ static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
+#ifdef DEBUG
+  printf("load_segment(): 진입\n");
+#endif
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
@@ -608,67 +640,107 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      /* Project 3-1, palloc --> frame_allco change */
-      //uint8_t *kpage = palloc_get_page (PAL_USER);
-      /*
-      uint8_t *kpage = frame_alloc (PAL_USER);
-
-      if (kpage == NULL)
-        return false;
-      */
-
-      if(!page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable))
+#ifdef VM
+      struct page *page;
+      if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable))==NULL)
       {
+#ifdef DEBUG
+        printf("load_segment(): page_create() 실패********\n");
+#endif
         return false;
       }
+      if(!ptable_insert(page))
+      {
+#ifdef DEBUG
+        printf("load_segment(): ptable_insert() 실패*********\\n");
+#endif
+        return false;
+      }
+#else
+      /* Get a page of memory. */
+      uint8_t *kpage = palloc_get_page (PAL_USER);
+      if (kpage == NULL)
+        return false;
 
       /* Load this page. */
-      /*
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
           return false; 
         }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);*/
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
-      /*if (!install_page (upage, kpage, writable)) 
+      if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
-        }*/
+        }
+#endif
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+#ifdef VM
       ofs += PGSIZE;
+#endif
     }
-  //file_seek (file, ofs);
   return true;
 }
-
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
 setup_stack (void **esp) 
 {
+#ifdef DEBUG
+  printf("setup_stack(): 진입\n");
+#endif
   uint8_t *kpage;
+  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   bool success = false;
-
-  /* Project 3-1, palloc --> frame_alloc change */
-  //kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+#ifdef VM
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
+#else
+  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+#endif
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      success = install_page (upage, kpage, true);
       if (success)
+      {
+#ifdef VM
+        struct page *page = malloc(sizeof(struct page));
+        page->upage = upage;
+        page->writable = true;
+        page->loaded = true;
+        page->file = NULL;
+        if(!ptable_insert(page))
+        {
+#ifdef DEBUG
+          printf("setup_stack(): ptable_insert() 실패 -> return false******\\n");
+#endif
+          success = false;
+        }
+#endif
         *esp = PHYS_BASE;
+      }
       else
-        frame_free (kpage);
+      {
+#ifdef VM
+        frame_free(kpage);
+#else
+        palloc_free_page (kpage);
+#endif
+      }
     }
+#ifdef DEBUG
+  if(success)
+    printf("setup_stack(): 성공\n");
+  else
+    printf("setup_stack(): 실패******\\n");
+#endif
   return success;
 }
 

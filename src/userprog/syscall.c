@@ -168,11 +168,17 @@ syscall_handler (struct intr_frame *f UNUSED)
 static void
 system_halt(void)
 {
+#ifdef DEBUG
+	printf("system_halt(): 진입\n");
+#endif
 	power_off();
 }
 
 void system_exit(int status)
 {
+#ifdef DEBUG
+	printf("system_exit(): 진입\n");
+#endif
 	struct thread *cur = thread_current();
 	printf("%s: exit(%d)\n", thread_current()->name, status);
 	cur->exit_status = status;
@@ -182,6 +188,9 @@ void system_exit(int status)
 static pid_t
 system_exec(const char* cmd_line)
 {
+#ifdef DEBUG
+	printf("system_exec(): 진입\n");
+#endif
 	if(!is_user_vaddr((void*)cmd_line)) system_exit(-1);
 	pid_t pid;
 	struct thread* t = thread_current();
@@ -193,12 +202,18 @@ system_exec(const char* cmd_line)
 static int
 system_wait(pid_t pid)
 {
+#ifdef DEBUG
+	printf("system_wait(): 진입\n");
+#endif
 	return process_wait(pid);
 }
 
 static bool
 system_create(const char* file, unsigned initial_size)
 {
+#ifdef DEBUG
+	printf("system_create(): 진입\n");
+#endif
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
@@ -210,6 +225,9 @@ system_create(const char* file, unsigned initial_size)
 static bool
 system_remove(const char* file)
 {
+#ifdef DEBUG
+	printf("system_remove(): 진입\n");
+#endif
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
 	filesys_acquire();
@@ -221,6 +239,9 @@ system_remove(const char* file)
 static int
 system_open(const char* file)
 {	
+#ifdef DEBUG
+	printf("system_open(): 진입\n");
+#endif
 	int fd = -1;
 	if(file==NULL || !is_user_vaddr((void *)file))
 		system_exit(-1);
@@ -234,6 +255,9 @@ system_open(const char* file)
 static int
 system_filesize(int fd)
 {
+#ifdef DEBUG
+	printf("system_filesize(): 진입\n");
+#endif
 	int size;
 	struct file *file;
 	filesys_acquire();
@@ -247,6 +271,9 @@ system_filesize(int fd)
 static int
 system_read(int fd, void* buffer, unsigned size)
 {
+#ifdef DEBUG
+	printf("system_read(): 진입\n");
+#endif
 	struct file *file;
 	unsigned i;
 	int bytes = -1;
@@ -281,6 +308,9 @@ system_read(int fd, void* buffer, unsigned size)
 static int
 system_write(int fd, const void* buffer, unsigned size)
 {
+#ifdef DEBUG
+	printf("system_write(): 진입\n");
+#endif
 	struct file *file;
 	int result = -1;
 	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer)) system_exit(-1);
@@ -310,6 +340,9 @@ system_write(int fd, const void* buffer, unsigned size)
 static void
 system_seek(int fd, unsigned position)
 {
+#ifdef DEBUG
+	printf("system_seek(): 진입\n");
+#endif
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	file = get_file_from_fd(fd);
@@ -324,6 +357,9 @@ system_seek(int fd, unsigned position)
 static unsigned
 system_tell(int fd)
 {
+#ifdef DEBUG
+	printf("system_tell(): 진입\n");
+#endif
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	unsigned int tell = 0;
@@ -340,6 +376,9 @@ system_tell(int fd)
 static void
 system_close(int fd)
 {
+#ifdef DEBUG
+	printf("system_close(): 진입\n");
+#endif
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	file = get_file_from_fd(fd);

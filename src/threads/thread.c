@@ -11,9 +11,11 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "vm/frame.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#endif
+#ifdef VM
+#include "vm/frame.h"
 #endif
 void *malloc(size_t);
 
@@ -145,9 +147,10 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-
-  /* Project 3-1 : frame table init */
+  
+#ifdef VM
   frame_init();
+#endif
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();

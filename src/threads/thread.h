@@ -3,6 +3,7 @@
 
 #include <debug.h>
 #include <list.h>
+#include <hash.h>
 #include <stdint.h>
 #include "threads/synch.h"
 
@@ -124,6 +125,9 @@ struct thread
     struct semaphore load_sema;
     struct thread *parent;
 #endif
+#ifdef VM
+    struct hash page_table;             /* Page table. */
+#endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     
@@ -137,10 +141,6 @@ struct thread
     /* 여러 개의 lock을 들고 있는 경우 */
     struct list lock_list;
 
-
-    /* Project 3-1, Sub Page Table 생성 */
-    struct list page_table;
-    struct lock page_table_lock;
   };
 
 /* If false (default), use round-robin scheduler.
