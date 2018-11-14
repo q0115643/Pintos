@@ -73,14 +73,16 @@ frame_alloc(enum palloc_flags flags)
 		/* page frame mapping table 구성 */
 		frame_set_elem(frame);
 		return frame;
-	} else {  /* 실패한 경우, victim 선정해야 함 */
+	}
+	else
+	{ /* 실패한 경우, victim 선정해야 함 */
 		/* victim 선정 */
 		bool success = frame_victim();
 		if(!success)
 		{
 			// victim 선정을 실패할 경우 --> 패닉;
 			PANIC ("VM / FRAME : [FAIL] Couldn't select the victim frame...");
-		} 
+		}
 		/* 다시 page 할당 */
 		/* page frame mapping table 구성 */
 		frame = palloc_get_page(flags);
@@ -90,7 +92,7 @@ frame_alloc(enum palloc_flags flags)
 }
 
 void
-frame_delete_elem(void *frame)
+frame_free(void *frame)
 {
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
@@ -99,18 +101,9 @@ frame_delete_elem(void *frame)
 		if(tmp_frame->page == frame)
 		{
 			list_remove(e);
-			free(tmp_frame);
 			palloc_free_page(tmp_frame->page);
+			free(tmp_frame);
 			break;
 		}
 	}
-}
-
-/* frame table에서 frame 해제 */
-/* free page --> frame_free */
-void
-frame_free(void *frame)
-{
-	/* frame table에서 삭제, palloc시켜주기 */
-	frame_delete_elem(frame);
 }

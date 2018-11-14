@@ -117,9 +117,9 @@ main (void)
   disk_init ();
   filesys_init (format_filesys);
 #endif
-//#ifdef VM
-//  frame_init();
-//#endif
+#ifdef VM
+  frame_init();
+#endif
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
