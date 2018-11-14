@@ -177,6 +177,7 @@ page_fault (struct intr_frame *f)
 #ifdef VM
   if(not_present)
   {
+    frame_acquire();
     page = ptable_lookup(fault_addr);
     if(page)
     {
@@ -193,6 +194,7 @@ page_fault (struct intr_frame *f)
           printf("page_fault(): page_load_file 성공\n");
 #endif
           page->loaded = true;
+          frame_release();
           return;
         }
         else
@@ -216,6 +218,7 @@ page_fault (struct intr_frame *f)
 #endif
       // stack growth
     }
+    frame_release();
   }
 #endif
 

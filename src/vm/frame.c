@@ -44,10 +44,7 @@ frame_set_elem(void *frame)
 	new_frame->page = frame;
 	new_frame->frame_owner = thread_current();
 	/* frame table(list)에 넣어야 함 */
-	/* lock 안걸어주면, panic */
-	frame_acquire();
 	list_push_back(&frame_table, &new_frame->elem);
-	frame_release();
 	return;
 }
 /* frame victim 선정 */
@@ -96,8 +93,6 @@ void
 frame_delete_elem(void *frame)
 {
 	struct list_elem *e;
-	/* lock 안걸어주면, panic */
-	frame_acquire();
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		struct frame *tmp_frame = list_entry(e, struct frame, elem);
@@ -109,7 +104,6 @@ frame_delete_elem(void *frame)
 			break;
 		}
 	}
-	frame_release();
 }
 
 /* frame table에서 frame 해제 */
@@ -117,11 +111,6 @@ frame_delete_elem(void *frame)
 void
 frame_free(void *frame)
 {
-	//struct list_elem *frame;
-
 	/* frame table에서 삭제, palloc시켜주기 */
-	//lock_acquire(&frame_manager);
 	frame_delete_elem(frame);
-	//lock_release(&frame_manager);
-
 }
