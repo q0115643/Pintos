@@ -153,10 +153,8 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   kpage = pagedir_get_page(cur->pagedir, page->upage);
   if (kpage != NULL)
   {
-    	frame_acquire();
       pagedir_clear_page(cur->pagedir, page->upage);
       frame_free(kpage);
-      frame_release();
   }
   free(page);
 }

@@ -238,11 +238,9 @@ process_exit (void)
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
 #ifdef VM
-  frame_acquire ();
   filesys_acquire ();
   ptable_clear();
   filesys_release ();
-  frame_release ();
 #endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
