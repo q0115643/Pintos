@@ -1,5 +1,0 @@
-FAIL
-Kernel panic in run: PANIC at ../../vm/frame.c:84 in frame_alloc(): VM / FRAME : [FAIL] Couldn't select the victim frame...
-Call stack: 0xc011def4
-Translation of call stack:
-0xc011def4: (unknown)
