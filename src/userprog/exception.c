@@ -175,7 +175,7 @@ page_fault (struct intr_frame *f)
 
 
 #ifdef VM
-  if(not_present)
+  if(not_present && is_user_vaddr(fault_addr))
   {
     frame_acquire();
     page = ptable_lookup(fault_addr);

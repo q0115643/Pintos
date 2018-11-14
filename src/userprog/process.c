@@ -239,9 +239,9 @@ process_exit (void)
   close_all_files();
 #ifdef VM
   frame_acquire();
-  filesys_acquire ();
+  //filesys_acquire();
   ptable_clear();
-  filesys_release ();
+  //filesys_release();
   frame_release();
 #endif
   /* Destroy the current process's page directory and switch back

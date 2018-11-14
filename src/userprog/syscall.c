@@ -260,9 +260,9 @@ system_filesize(int fd)
 #endif
 	int size;
 	struct file *file;
-	filesys_acquire();
 	file = get_file_from_fd(fd);
 	if(file==NULL) system_exit(-1);
+	filesys_acquire();
 	size = file_length(file);
 	filesys_release();
 	return size;
@@ -386,8 +386,8 @@ system_close(int fd)
 	{
 		filesys_acquire();
 		file_close(file);
-		filesys_release();
 		remove_file(fd);
+		filesys_release();
 	}
 }
 

@@ -108,6 +108,8 @@ page_load_file(struct page *page)
 	struct thread *cur = thread_current();
 	uint8_t *kpage = frame_alloc(PAL_USER); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
 	if(!kpage) return false;
+	if(page->read_bytes>0)
+	{
 	filesys_acquire();
 	if(file_read_at(page->file, kpage, page->read_bytes, page->offset) != page->read_bytes)
 	{
@@ -120,14 +122,13 @@ page_load_file(struct page *page)
 	}
 	filesys_release();
 	memset(kpage + page->read_bytes, 0, page->zero_bytes);
+	}
 	if(!install_page(page->upage, kpage, page->writable))
 	{
 #ifdef DEBUG
 		printf("page_load_file(): install_page()이 실패 -> return false******\\n");
 #endif
-		filesys_acquire();
 		frame_free(kpage);
-		filesys_release();
 		return false;
 	}
 	page->loaded = true;
