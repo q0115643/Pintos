@@ -281,7 +281,7 @@ write_on_nonwritable_page(void *fault_addr, bool not_present, bool write)
     if(!page->writable){
       system_exit(-1);
     }
-  }
+  } 
 }
 
 
