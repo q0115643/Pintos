@@ -133,6 +133,9 @@ page_load_file(struct page *page)
 		return false;
 	}
 	page->loaded = true;
+	struct frame *frame = frame_get_from_addr(kpage);
+	frame->alloc_page = page;
+
 	pagedir_set_accessed(cur->pagedir, page->upage, true);
 	return true;
 }
@@ -141,7 +144,7 @@ bool
 page_load_swap(struct page *page)
 {
 	struct thread *cur = thread_current();
-	printf("[page_load_swap] : frame_alloc 전 \n");
+	//printf("[page_load_swap] : frame_alloc 전 \n");
 	void *kpage = frame_alloc(0);
 	bool success;
 
@@ -156,6 +159,9 @@ page_load_swap(struct page *page)
 	  frame_free(kpage);
 	  return false;
 	}
+
+	struct frame *frame = frame_get_from_addr(kpage);
+	frame->alloc_page = page;
 
   	pagedir_set_dirty(cur->pagedir, page->upage, true);
   	pagedir_set_accessed (cur->pagedir, page->upage, true);

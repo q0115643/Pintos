@@ -23,6 +23,8 @@ struct page
 	bool loaded;
 	bool swaped;
 	size_t swap_index;
+	
+	
 };
 
 void ptable_init(struct hash *ptable);

@@ -225,6 +225,9 @@ page_fault (struct intr_frame *f)
               s_page->writable = true;
               s_page->loaded = true;
               s_page->file = NULL;
+              struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
+              tmp_frame->alloc_page = s_page;
+
               if(!ptable_insert(s_page))
               {
                 success = false;
@@ -281,7 +284,7 @@ write_on_nonwritable_page(void *fault_addr, bool not_present, bool write)
     if(!page->writable){
       system_exit(-1);
     }
-  } 
+  }
 }
 
 

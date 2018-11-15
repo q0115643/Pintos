@@ -145,7 +145,7 @@ frame_evict(enum palloc_flags flags)
 void *
 frame_victim(enum palloc_flags flags)
 {
-	printf("[frame_victim] : 입장! \n");
+	//printf("[frame_victim] : 입장! \n");
 	struct frame *frame = NULL;
 	struct page *page;
 	struct thread *owner;
@@ -153,23 +153,22 @@ frame_victim(enum palloc_flags flags)
 	/* Second chance algorithm. */
 	struct list_elem *e;
 	e = list_begin (&frame_table);
-	printf("[frame_victim] : while 입장 전! \n");
+	//printf("[frame_victim] : while 입장 전! \n");
 	while(true)
 	{
-		printf("[frame_victim] : while 입장! \n");
+		//printf("[frame_victim] : while 입장! \n");
 		frame = list_entry(e, struct frame, elem);
 		owner = frame->frame_owner;
 		page = frame->alloc_page;
 
-		printf("[frame_victim] : if 문 입장 전! \n");
 		if (pagedir_is_accessed (owner->pagedir, page->upage))
 		{
-			printf("[frame_victim] : pagedir_is_accessed 문 입장! \n");
+			//printf("[frame_victim] : pagedir_is_accessed 문 입장! \n");
 			pagedir_set_accessed (owner->pagedir, page->upage, false);
 
 		} else {
 			
-			printf("[frame_victim] : else 문 입장! \n");
+			//printf("[frame_victim] : else 문 입장! \n");
 			if (pagedir_is_dirty (owner->pagedir, page->upage))
 			{
 	      	/*
@@ -194,7 +193,7 @@ frame_victim(enum palloc_flags flags)
 
 			}
 
-			list_remove (e);
+			list_remove(e);
 			pagedir_clear_page (owner->pagedir, page->upage);
 			palloc_free_page(frame->page);
 			free(frame);
@@ -206,7 +205,7 @@ frame_victim(enum palloc_flags flags)
 	    if (e == list_end (&frame_table)) e = list_begin (&frame_table);
 
 	}
-	printf("[frame_victim] : 퇴장! \n");
+	//printf("[frame_victim] : 퇴장! \n");
 }
 
 /* frame table 생성을 위함 */
@@ -214,12 +213,8 @@ frame_victim(enum palloc_flags flags)
 void *
 frame_alloc(enum palloc_flags flags)
 {
-	if(!(flags & PAL_USER))
-	{
-		printf("VM/ FRAME : NOT USER POOL!!\n");
-		return NULL;
-	}
-	void *frame = palloc_get_page(flags);
+
+	void *frame = palloc_get_page(PAL_USER | flags);
 	/* page 할당 성공한 경우, */
 	if(frame != NULL)
 	{
@@ -230,16 +225,16 @@ frame_alloc(enum palloc_flags flags)
 	else
 	{ /* 실패한 경우, victim 선정해야 함 */
 		/* victim 선정 */
-		frame = frame_victim(flags);
-		frame_set_elem(frame);
-		if(!frame)
+		
+		while (!frame)
 		{
-			// victim 선정을 실패할 경우 --> 패닉;
-			PANIC ("VM / FRAME : [FAIL] Couldn't select the victim frame...");
+			frame = frame_victim(flags);
 		}
+		
+		frame_set_elem(frame);
 
 #ifdef DEBUG
-		printf("[frame_alloc] : frame_evict 성공 \n");
+		//printf("[frame_alloc] : frame_evict 성공 \n");
 #endif
 		/* 다시 page 할당 */
 		/* page frame mapping table 구성 */
