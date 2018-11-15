@@ -142,6 +142,7 @@ page_fault (struct intr_frame *f)
   void *fault_addr;  /* Fault address. */
 #ifdef VM
   struct page* page;
+  uint8_t *tmp_kpage;
 #endif
   bool success = false;
   /* Obtain faulting address, the virtual address that was
@@ -179,47 +180,75 @@ page_fault (struct intr_frame *f)
   if(is_kernel_vaddr(fault_addr) && user){
     system_exit(-1);
   }
-  bool off_stack = false;
-  if(is_user_vaddr(fault_addr) && not_present){
-    //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
-    if(!user && f->esp <= PHYS_BASE - STACK_LIMIT)  // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
-    {
-      f->esp = thread_current()->esp;
-    }
-    if(fault_addr >= f->esp-32){ // stack pointer보다 4바이트 이상 높은 주소로 찍히면 스택 growth! (일수도 있고 아닐수도 있음 <= lookup해서 페이지가 떠버리면 평범한 file_load)
-      off_stack = true;
-    }
-    struct page *page = ptable_lookup(fault_addr);
-    if(!page)
-    {
-      if(off_stack)
-      {
-        //stack growth
-        // 어쩌지
-        system_exit(-1);
-      }
-      else
-      {
-        //그냥 잘못됨
-        system_exit(-1);
-      }
 
-    }
-    else
+  /*
+   * kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
+   */
+  if(!user && not_present && f->esp <= PHYS_BASE - STACK_LIMIT) 
+  { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
+    f->esp = thread_current()->esp;
+  }
+
+  /*
+   *  user 주소에서 fault + page가 없음.
+   */
+  bool stack = false;
+  if(is_user_vaddr(fault_addr) && not_present){
+    struct page *page = ptable_lookup(fault_addr);
+    if(page)
     {
       if(!page->loaded)
       {
         success = page_load_file(page);
       }
     }
+    else
+    { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
+      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT){ // PUSHA signal이 permission 받으러온거임.
+        uint8_t *stack_page_addr = pg_round_down(fault_addr);
+        while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
+        {
+          if(ptable_lookup(stack_page_addr))
+          {
+            stack_page_addr += PGSIZE;
+            continue;
+          }
+          tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
+          if (tmp_kpage != NULL)
+          {
+            success = install_page (stack_page_addr, tmp_kpage, true);
+            if(success)
+            {
+              struct page *s_page = malloc(sizeof(struct page));
+              s_page->upage = stack_page_addr;
+              s_page->writable = true;
+              s_page->loaded = true;
+              s_page->file = NULL;
+              if(!ptable_insert(s_page))
+              {
+                success = false;
+              }
+            }
+          }
+          stack_page_addr -= PGSIZE;
+        }
+      }
+      else
+      {
+        system_exit(-1);
+      }
+    }
   }
 
   // write 못하는 건가
   if(is_user_vaddr(fault_addr) && !not_present){
+    frame_acquire();
     struct page *page = ptable_lookup(fault_addr);
     if(!page->writable){
+      frame_release();
       system_exit(-1);
     }
+    frame_release();
   }
 
   /* To implement virtual memory, delete the rest of the function
