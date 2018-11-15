@@ -63,6 +63,7 @@ page_create(struct file *file, off_t ofs, uint8_t *upage,
   page->zero_bytes = zero_bytes;
   page->writable = writable;
   page->loaded = false;
+  page->swaped = false;
   return page;
 }
 
@@ -135,6 +136,32 @@ page_load_file(struct page *page)
 	pagedir_set_accessed(cur->pagedir, page->upage, true);
 	return true;
 }
+
+bool
+page_load_swap(struct page *page)
+{
+	struct thread *cur = thread_current();
+	printf("[page_load_swap] : frame_alloc 전 \n");
+	void *kpage = frame_alloc(0);
+	bool success;
+
+	if(kpage == NULL) return false;
+
+	swap_in(page, kpage);
+	success = (pagedir_get_page (cur->pagedir, page->upage) == NULL
+	         && pagedir_set_page (cur->pagedir, page->upage, kpage, true));
+
+	if (!success)
+	{
+	  frame_free(kpage);
+	  return false;
+	}
+
+  	pagedir_set_dirty(cur->pagedir, page->upage, true);
+  	pagedir_set_accessed (cur->pagedir, page->upage, true);
+  	return true;
+}
+
 
 void
 ptable_clear()

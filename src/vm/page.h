@@ -21,6 +21,8 @@ struct page
 	size_t zero_bytes;
 	bool writable;
 	bool loaded;
+	bool swaped;
+	size_t swap_index;
 };
 
 void ptable_init(struct hash *ptable);

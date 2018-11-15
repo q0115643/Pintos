@@ -196,7 +196,10 @@ page_fault (struct intr_frame *f)
     {
       if(!page->loaded)
       {
-        success = page_load_file(page);
+        if(!page->swaped)
+          success = page_load_file(page);
+        else
+          success = page_load_swap(page);
       }
     }
     else
