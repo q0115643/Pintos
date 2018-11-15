@@ -66,7 +66,7 @@ frame_alloc(enum palloc_flags flags)
 		printf("VM/ FRAME : NOT USER POOL!!\n");
 		return NULL;
 	}
-	void *frame = palloc_get_page(flags);
+	void *frame = palloc_get_page(PAL_USER | flags);
 	/* page 할당 성공한 경우, */
 	if(frame != NULL)
 	{
@@ -85,7 +85,7 @@ frame_alloc(enum palloc_flags flags)
 		}
 		/* 다시 page 할당 */
 		/* page frame mapping table 구성 */
-		frame = palloc_get_page(flags);
+		frame = palloc_get_page(PAL_USER | flags);
 		frame_set_elem(frame);
 		return frame;
 	}

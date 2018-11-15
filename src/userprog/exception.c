@@ -213,7 +213,10 @@ page_fault (struct intr_frame *f)
             stack_page_addr += PGSIZE;
             continue;
           }
+          //PANIC ("stack growth 때문에 frame_alloc 하기 전");
+          //printf("stack growth 때문에 frame_alloc 하기 전\n");
           tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
+          //printf("stack growth 때문에 frame_alloc 한 후\n");
           if (tmp_kpage != NULL)
           {
             success = install_page (stack_page_addr, tmp_kpage, true);
@@ -230,7 +233,7 @@ page_fault (struct intr_frame *f)
               }
             }
           }
-          stack_page_addr -= PGSIZE;
+          stack_page_addr += PGSIZE;
         }
       }
       else
