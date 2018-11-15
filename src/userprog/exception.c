@@ -182,7 +182,7 @@ page_fault (struct intr_frame *f)
   bool off_stack = false;
   if(is_user_vaddr(fault_addr) && not_present){
     //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
-    if(!user && f->esp >= PHYS_BASE - STACK_LIMIT)  // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
+    if(!user && f->esp <= PHYS_BASE - STACK_LIMIT)  // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
     {
       f->esp = thread_current()->esp;
     }
