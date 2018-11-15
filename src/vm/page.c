@@ -135,7 +135,6 @@ page_load_file(struct page *page)
 	page->loaded = true;
 	struct frame *frame = frame_get_from_addr(kpage);
 	frame->alloc_page = page;
-
 	pagedir_set_accessed(cur->pagedir, page->upage, true);
 	return true;
 }
@@ -144,36 +143,28 @@ bool
 page_load_swap(struct page *page)
 {
 	struct thread *cur = thread_current();
-	//printf("[page_load_swap] : frame_alloc 전 \n");
 	void *kpage = frame_alloc(0);
-	bool success;
-
-	if(kpage == NULL) return false;
-
+	if(!kpage) return false;
 	swap_in(page, kpage);
-	success = (pagedir_get_page (cur->pagedir, page->upage) == NULL
-	         && pagedir_set_page (cur->pagedir, page->upage, kpage, true));
-
-	if (!success)
+	if(!install_page(page->upage, kpage, true))
 	{
 	  frame_free(kpage);
 	  return false;
 	}
-
 	struct frame *frame = frame_get_from_addr(kpage);
+	page->swaped = false;
+	page->loaded = true;
 	frame->alloc_page = page;
-
-  	pagedir_set_dirty(cur->pagedir, page->upage, true);
-  	pagedir_set_accessed (cur->pagedir, page->upage, true);
-  	return true;
+	pagedir_set_dirty(cur->pagedir, page->upage, true);
+  pagedir_set_accessed (cur->pagedir, page->upage, true);
+  return true;
 }
-
 
 void
 ptable_clear()
 {
 	struct list *page_table = &thread_current()->page_table;
-	hash_destroy (page_table, page_destroy_function);
+	hash_destroy(page_table, page_destroy_function);
 }
 
 /* destroy & free elements in page table */

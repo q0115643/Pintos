@@ -9,7 +9,7 @@ struct list frame_table;
 
 struct frame {
 	struct thread *frame_owner;
-	void *page;
+	void *kpage;
 	struct list_elem elem;
 	struct page *alloc_page;
 };

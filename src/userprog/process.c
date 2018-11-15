@@ -681,7 +681,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }
 #endif
-
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -723,7 +722,6 @@ setup_stack (void **esp)
         page->file = NULL;
         struct frame *frame = frame_get_from_addr(kpage);
         frame->alloc_page = page;
-        
         if(!ptable_insert(page))
         {
 #ifdef DEBUG

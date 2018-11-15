@@ -177,16 +177,14 @@ page_fault (struct intr_frame *f)
    *  유저 프로세스가 kernel에 접근 => exit(-1)
    */
   exit_if_user_access_in_kernel(fault_addr, user);
-  /*
-   *  kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
-   */
-  bring_esp_from_thread_struct(user, not_present, f);
   /* 
    *  있는 페이지에 접근했는데 non-writable에 write하려해서 터짐
    */
   write_on_nonwritable_page(fault_addr, not_present, write);
-
-
+  /*
+   *  kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
+   */
+  bring_esp_from_thread_struct(user, not_present, f);
   /*
    *  user 주소에서 fault, page가 없음.
    */
@@ -196,10 +194,14 @@ page_fault (struct intr_frame *f)
     {
       if(!page->loaded)
       {
-        if(!page->swaped)
-          success = page_load_file(page);
-        else
+        if(page->swaped)
+        {
           success = page_load_swap(page);
+        }
+        else
+        {
+          success = page_load_file(page);
+        }
       }
     }
     else
@@ -227,7 +229,6 @@ page_fault (struct intr_frame *f)
               s_page->file = NULL;
               struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
               tmp_frame->alloc_page = s_page;
-
               if(!ptable_insert(s_page))
               {
                 success = false;
