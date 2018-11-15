@@ -7,7 +7,7 @@
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
 
-#define MAX_STACK_SIZE 8 * 1024 * 1024
+#define STACK_LIMIT 8 * 1024 * 1024
 
 #ifdef VM
 #include "vm/frame.h"
@@ -173,23 +173,37 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
 #endif
 
-
+  /*
+   *  유저 프로세스가 kernel에 접근 => exit(-1)
+   */
   if(is_kernel_vaddr(fault_addr) && user){
     system_exit(-1);
   }
-  bool stack = false;
+  bool off_stack = false;
   if(is_user_vaddr(fault_addr) && not_present){
-    //stack growing
-    if(fault_addr >= f->esp-32){
-      stack = true;
+    //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
+    if(!user && f->esp >= PHYS_BASE - STACK_LIMIT)  // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
+    {
+      f->esp = thread_current()->esp;
     }
-    //load
-    //load = page_fault_handler(fault_addr, stack);
+    if(fault_addr >= f->esp-32){ // stack pointer보다 4바이트 이상 높은 주소로 찍히면 스택 growth! (일수도 있고 아닐수도 있음 <= lookup해서 페이지가 떠버리면 평범한 file_load)
+      off_stack = true;
+    }
     struct page *page = ptable_lookup(fault_addr);
     if(!page)
     {
-      //stack growth
-      system_exit(-1);
+      if(off_stack)
+      {
+        //stack growth
+        // 어쩌지
+        system_exit(-1);
+      }
+      else
+      {
+        //그냥 잘못됨
+        system_exit(-1);
+      }
+
     }
     else
     {
@@ -200,73 +214,14 @@ page_fault (struct intr_frame *f)
     }
   }
 
-  // for write denying in code
+  // write 못하는 건가
   if(is_user_vaddr(fault_addr) && !not_present){
     struct page *page = ptable_lookup(fault_addr);
     if(!page->writable){
       system_exit(-1);
     }
   }
-/*
-#ifdef VM
-  if(not_present && is_user_vaddr(fault_addr))
-  {
-    frame_acquire();
-    page = ptable_lookup(fault_addr);
-    if(page)
-    {
-      // swap, file, zero
-      if(!page->loaded)
-      {
-#ifdef DEBUG
-        printf("page_fault(): !page->loaded\n");
-#endif
-        success = page_load_file(page);
-        if(success)
-        {
-#ifdef DEBUG
-          printf("page_fault(): page_load_file 성공\n");
-#endif
-          page->loaded = true;
-          frame_release();
-          return;
-        }
-        else
-        {
-#ifdef DEBUG
-          printf("page_fault(): page_load_file 실패******\n");
-#endif
-        }
-      }
-      else
-      {
-#ifdef DEBUG
-        printf("page_fault(): page->loaded\n");
-#endif
-      }
-    }
-    else
-    {
-#ifdef DEBUG
-      printf("page_fault(): !page\n");
-#endif
-      // stack growth & page fault
-    }
-    frame_release();
-  }
-#endif
-*/
-  /* 1. unmapped virtual memory 접근 
-     2. write to read-only page
-     3. access to kernel space by user *//*
-  if(not_present || write || user)
-  {
-#ifdef DEBUG
-    printf("page_fault(): not_present || write || user 이거에 걸려서 exit(-1)\n");
-#endif
-    system_exit(-1);
-  }
-*/
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

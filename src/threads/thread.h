@@ -127,6 +127,7 @@ struct thread
 #endif
 #ifdef VM
     struct hash page_table;             /* Page table. */
+    void *esp;                          /* Stack Pointer. */
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

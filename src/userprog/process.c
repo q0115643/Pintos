@@ -712,7 +712,7 @@ setup_stack (void **esp)
 #endif
   if (kpage != NULL) 
     {
-      success = install_page (upage, kpage, true);
+      success = install_page (upage, kpage, true); // The first stack page need not be allocated lazily.
       if (success)
       {
 #ifdef VM

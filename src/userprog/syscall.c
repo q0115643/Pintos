@@ -71,6 +71,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   int32_t args[3];
   unsigned int argc;
   if(!is_user_vaddr(f->esp)) system_exit(-1);
+#ifdef VM
+  thread_current()->esp = f->esp;
+#endif
   switch(*(int*)f->esp)
   {
   	case SYS_HALT:
