@@ -21,7 +21,10 @@ static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
-
+/* Help functions. */
+void exit_if_user_access_in_kernel(void *fault_addr, bool user);
+void bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f);
+void write_on_nonwritable_page(void *fault_addr, bool not_present, bool write);
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -177,22 +180,20 @@ page_fault (struct intr_frame *f)
   /*
    *  유저 프로세스가 kernel에 접근 => exit(-1)
    */
-  if(is_kernel_vaddr(fault_addr) && user){
-    system_exit(-1);
-  }
-
+  exit_if_user_access_in_kernel(fault_addr, user);
   /*
-   * kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
+   *  kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
    */
-  if(!user && not_present && f->esp <= PHYS_BASE - STACK_LIMIT) 
-  { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
-    f->esp = thread_current()->esp;
-  }
+  bring_esp_from_thread_struct(user, not_present, f);
+  /* 
+   *  있는 페이지에 접근했는데 non-writable에 write하려해서 터짐
+   */
+  write_on_nonwritable_page(fault_addr, not_present, write);
+
 
   /*
    *  user 주소에서 fault + page가 없음.
    */
-  bool stack = false;
   if(is_user_vaddr(fault_addr) && not_present){
     struct page *page = ptable_lookup(fault_addr);
     if(page)
@@ -243,17 +244,6 @@ page_fault (struct intr_frame *f)
     }
   }
 
-  // write 못하는 건가
-  if(is_user_vaddr(fault_addr) && !not_present){
-    frame_acquire();
-    struct page *page = ptable_lookup(fault_addr);
-    if(!page->writable){
-      frame_release();
-      system_exit(-1);
-    }
-    frame_release();
-  }
-
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
@@ -267,4 +257,34 @@ page_fault (struct intr_frame *f)
     kill (f);
   }
 }
+
+/* Help functions. */
+void
+exit_if_user_access_in_kernel(void *fault_addr, bool user)
+{
+  if(is_kernel_vaddr(fault_addr) && user){
+    system_exit(-1);
+  }
+}
+
+void
+bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
+{
+  if(!user && not_present && f->esp <= PHYS_BASE - STACK_LIMIT)
+  { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
+    f->esp = thread_current()->esp;
+  }
+}
+
+void
+write_on_nonwritable_page(void *fault_addr, bool not_present, bool write)
+{
+  if(is_user_vaddr(fault_addr) && !not_present && write){
+    struct page *page = ptable_lookup(fault_addr);
+    if(!page->writable){
+      system_exit(-1);
+    }
+  }
+}
+
 
