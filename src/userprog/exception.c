@@ -143,10 +143,6 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-#ifdef VM
-  struct page* page;
-  uint8_t *tmp_kpage;
-#endif
   bool success = false;
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -192,7 +188,7 @@ page_fault (struct intr_frame *f)
 
 
   /*
-   *  user 주소에서 fault + page가 없음.
+   *  user 주소에서 fault, page가 없음.
    */
   if(is_user_vaddr(fault_addr) && not_present){
     struct page *page = ptable_lookup(fault_addr);
@@ -214,10 +210,8 @@ page_fault (struct intr_frame *f)
             stack_page_addr += PGSIZE;
             continue;
           }
-          //PANIC ("stack growth 때문에 frame_alloc 하기 전");
-          //printf("stack growth 때문에 frame_alloc 하기 전\n");
+          uint8_t *tmp_kpage;
           tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
-          //printf("stack growth 때문에 frame_alloc 한 후\n");
           if (tmp_kpage != NULL)
           {
             success = install_page (stack_page_addr, tmp_kpage, true);
