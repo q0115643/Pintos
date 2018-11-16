@@ -103,7 +103,7 @@ swap_in(struct page *page, void *addr)
 	disk_sector_t disk_sector;
 	for (disk_sector = 0; disk_sector < (PGSIZE / DISK_SECTOR_SIZE); disk_sector++) 
 	{
-		disk_read (disk_block, page->swap_index * PGSIZE / DISK_SECTOR_SIZE + disk_sector, addr + disk_sector * DISK_SECTOR_SIZE);
+		disk_read(disk_block, page->swap_index * PGSIZE / DISK_SECTOR_SIZE + disk_sector, addr + disk_sector * DISK_SECTOR_SIZE);
 	}
 	swap_release();
 }

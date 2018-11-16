@@ -720,6 +720,7 @@ setup_stack (void **esp)
         page->writable = true;
         page->loaded = true;
         page->file = NULL;
+        page->swaped = false;
         struct frame *frame = frame_get_from_addr(kpage);
         frame->alloc_page = page;
         if(!ptable_insert(page))

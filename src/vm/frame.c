@@ -56,10 +56,9 @@ frame_get_from_addr(void *addr)
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
-		struct frame *tmp_frame = list_entry(e, struct frame, elem);
-		if(tmp_frame->kpage == addr)
+		if(list_entry(e, struct frame, elem)->kpage == addr)
 		{
-			return tmp_frame;
+			return list_entry(e, struct frame, elem);
 		}
 	}
 	return NULL;
@@ -85,6 +84,7 @@ frame_victim(enum palloc_flags flags)
 		} 
 		else
 		{	
+			//printf("victim 찾음\n");
 			if(pagedir_is_dirty(owner->pagedir, page->upage))
 			{
 				page->swaped = true;
@@ -99,6 +99,7 @@ frame_victim(enum palloc_flags flags)
 			pagedir_clear_page(owner->pagedir, page->upage);
 			palloc_free_page(frame->kpage);
 			free(frame);
+			//printf("victim return\n");
 			return palloc_get_page(PAL_USER | flags);
 	  }
 	  e = list_next(e);
@@ -122,7 +123,8 @@ frame_alloc(enum palloc_flags flags)
 	else
 	{ /* 실패한 경우, victim 선정해야 함 */
 		/* victim 선정 */
-		frame = frame_victim(flags);
+		while(!frame)
+			frame = frame_victim(flags);
 		frame_set_elem(frame);
 		return frame;
 	}

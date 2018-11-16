@@ -156,7 +156,7 @@ page_load_swap(struct page *page)
 	page->loaded = true;
 	frame->alloc_page = page;
 	pagedir_set_dirty(cur->pagedir, page->upage, true);
-  pagedir_set_accessed (cur->pagedir, page->upage, true);
+  pagedir_set_accessed(cur->pagedir, page->upage, true);
   return true;
 }
 
