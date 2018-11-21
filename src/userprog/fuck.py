@@ -22,9 +22,9 @@ static long long page_fault_cnt;
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
 /* Help functions. */
-void exit_if_user_access_in_kernel(void *fault_addr, bool user);
+bool exit_if_user_access_in_kernel(void *fault_addr, bool user);
 void bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f);
-void write_on_nonwritable_page(void *fault_addr, bool not_present, bool write);
+bool write_on_nonwritable_page(void *fault_addr, bool not_present, bool write);
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -164,11 +164,13 @@ page_fault (struct intr_frame *f)
   /*
    *  유저 프로세스가 kernel에 접근 => exit(-1)
    */
-  exit_if_user_access_in_kernel(fault_addr, user);
+  success = exit_if_user_access_in_kernel(fault_addr, user);
+  if(!success) system_exit(-1);
   /* 
    *  있는 페이지에 접근했는데 non-writable에 write하려해서 터짐
    */
-  write_on_nonwritable_page(fault_addr, not_present, write);
+  success = write_on_nonwritable_page(fault_addr, not_present, write);
+  if(!success) system_exit(-1);
   /*
    *  kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
    */
@@ -191,16 +193,17 @@ page_fault (struct intr_frame *f)
         {
           success = page_load_file(page);
         }
-        if(!success)
-          system_exit(-1);
+        if(success)
+          page->loaded = true;
       }
       if(success)
+      {
         return;
+      }
     }
     else
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
-      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
-      { // PUSHA signal이 permission 받으러온거임.
+      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT){ // PUSHA signal이 permission 받으러온거임.
         uint8_t *stack_page_addr = pg_round_down(fault_addr);
         success = true;
         while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE && success)
@@ -214,7 +217,7 @@ page_fault (struct intr_frame *f)
           tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
           if (tmp_kpage != NULL)
           {
-            success = install_page (stack_page_addr, tmp_kpage, true);
+            success = install_page(stack_page_addr, tmp_kpage, true);
             if(success)
             {
               struct page *s_page = malloc(sizeof(struct page));
@@ -226,14 +229,19 @@ page_fault (struct intr_frame *f)
               struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
               tmp_frame->alloc_page = s_page;
               success = ptable_insert(s_page);
+              //if(!success) goto done;
             }
             else
+            {
               system_exit(-1);
+            }
           }
           stack_page_addr += PGSIZE;
         }
         if(success)
+        {
           return;
+        }
       }
       else
       {
@@ -241,53 +249,46 @@ page_fault (struct intr_frame *f)
       }
     }
   }
-  
   if(not_present || write || user) system_exit(-1);
-  //if(not_present || write || user) system_exit(-1);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  if(!success)
-  {
-    printf ("Page fault at %p: %s error %s page in %s context.\n",
-            fault_addr,
-            not_present ? "not present" : "rights violation",
-            write ? "writing" : "reading",
-            user ? "user" : "kernel");
-    kill (f);
-  }
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  kill (f);
 }
 
 /* Help functions. */
-void
+bool
 exit_if_user_access_in_kernel(void *fault_addr, bool user)
 {
-  if(is_kernel_vaddr(fault_addr) && user)
-  {
-    system_exit(-1);
+  if(is_kernel_vaddr(fault_addr) && user){
+    return false;
   }
+  return true;
 }
 
 void
 bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
 {
-  if(!user && not_present && f->esp <= PHYS_BASE - STACK_LIMIT)
+  if(!user && not_present && f->esp >= PHYS_BASE - STACK_LIMIT)
   { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
     f->esp = thread_current()->esp;
   }
 }
 
-void
+bool
 write_on_nonwritable_page(void *fault_addr, bool not_present, bool write)
 {
   if(is_user_vaddr(fault_addr) && !not_present && write){
     struct page *page = ptable_lookup(fault_addr);
-    if(!page->writable)
-    {
-      system_exit(-1);
+    if(!page->writable){
+      return false;
     }
   }
+  return true;
 }
-
-
