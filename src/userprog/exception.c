@@ -197,7 +197,8 @@ page_fault (struct intr_frame *f)
        *  kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
        */
       bring_esp_from_thread_struct(user, not_present, f);
-      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT){ // PUSHA signal이 permission 받으러온거임.
+      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
+      { // PUSHA signal이 permission 받으러온거임.
         uint8_t *stack_page_addr = pg_round_down(fault_addr);
         while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
         {
@@ -234,8 +235,8 @@ page_fault (struct intr_frame *f)
   }
   
   if(!success) system_exit(-1);
+  //if(not_present || write || user) system_exit(-1);
 
-  //if (not_present || write || user) system_exit(-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
@@ -254,7 +255,8 @@ page_fault (struct intr_frame *f)
 void
 exit_if_user_access_in_kernel(void *fault_addr, bool user)
 {
-  if(is_kernel_vaddr(fault_addr) && user){
+  if(is_kernel_vaddr(fault_addr) && user)
+  {
     system_exit(-1);
   }
 }
@@ -273,7 +275,8 @@ write_on_nonwritable_page(void *fault_addr, bool not_present, bool write)
 {
   if(is_user_vaddr(fault_addr) && !not_present && write){
     struct page *page = ptable_lookup(fault_addr);
-    if(!page->writable){
+    if(!page->writable)
+    {
       system_exit(-1);
     }
   }

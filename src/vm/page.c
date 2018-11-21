@@ -156,21 +156,25 @@ bool
 page_load_swap(struct page *page)
 {
 	struct thread *cur = thread_current();
-	void *kpage = frame_alloc(0);
+	//void *kpage = frame_alloc(0);
+	void *kpage = frame_alloc(PAL_USER);
+
 	if(!kpage) return false;
-	swap_in(page, kpage);
+	
 	if(!install_page(page->upage, kpage, true))
 	{
 	  frame_free(kpage);
 	  return false;
 	}
+
+	swap_in(page, kpage);
 	struct frame *frame = frame_get_from_addr(kpage);
 	page->swaped = false;
 	page->loaded = true;
 	frame->alloc_page = page;
 	pagedir_set_dirty(cur->pagedir, page->upage, true);
-  pagedir_set_accessed(cur->pagedir, page->upage, true);
-  return true;
+  	pagedir_set_accessed(cur->pagedir, page->upage, true);
+  	return true;
 }
 
 void
