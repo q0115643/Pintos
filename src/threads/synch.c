@@ -305,6 +305,7 @@ lock_try_acquire (struct lock *lock)
   if (success)
     lock->holder = thread_current ();
   return success;
+  
 }
 
 /* Releases LOCK, which must be owned by the current thread.
@@ -352,7 +353,16 @@ lock_held_by_current_thread (const struct lock *lock)
 {
   ASSERT (lock != NULL);
 
-  return lock->holder == thread_current ();
+  /*
+  if(lock == NULL){
+    printf("Lock is NULL!!\n");
+  }
+  struct thread * t = thread_current();
+  if(lock->holder != t){
+    printf("Lock holder fail! \n");
+  }*/
+
+  return lock->holder == thread_current();
 }
 
 /* One semaphore in a list. */

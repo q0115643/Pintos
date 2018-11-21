@@ -13,6 +13,8 @@
 
 static struct lock frame_lock;
 
+//#define DEBUG
+
 /* frame table manage를 위해, table(list)와 manager(lock) 초기화 */
 void
 frame_init(void)
@@ -45,7 +47,15 @@ frame_set_elem(void *frame)
 	new_frame->frame_owner = thread_current();
 	new_frame->alloc_page = NULL;
 	/* frame table(list)에 넣어야 함 */
+#ifdef DEBUG
+	printf("frame_se_elem(): frame acquire 진입\n");
+#endif
+	frame_acquire();
 	list_push_back(&frame_table, &new_frame->elem);
+	frame_release();
+#ifdef DEBUG
+	printf("frame_se_elem(): frame release 성공\n");
+#endif
 	return;
 }
 
@@ -53,20 +63,31 @@ frame_set_elem(void *frame)
 struct frame *
 frame_get_from_addr(void *addr)
 {
+#ifdef DEBUG
+	printf("frame_get_from_addr(): frame acquire 진입\n");
+#endif
+	frame_acquire();
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		if(list_entry(e, struct frame, elem)->kpage == addr)
 		{
+			frame_release();
 			return list_entry(e, struct frame, elem);
 		}
 	}
+
+	frame_release();
 	return NULL;
 }
 
 void *
 frame_victim(enum palloc_flags flags)
 {
+#ifdef DEBUG
+	printf("frame_victim(): frame acquire 진입\n");
+#endif	
+	frame_acquire();
 	struct frame *frame = NULL;
 	struct page *page;
 	struct thread *owner;
@@ -85,23 +106,21 @@ frame_victim(enum palloc_flags flags)
 		else
 		{	
 			//printf("victim 찾음\n");
-			if(pagedir_is_dirty(owner->pagedir, page->upage))
+			if(pagedir_is_dirty(owner->pagedir, page->upage) || page->swaped == true)
 			{
 				page->swaped = true;
 				page->swap_index = swap_out(frame->kpage);
-				page->loaded = false;
 			} 
-			else
-			{ 
-				page->loaded = false;
-			}
+
+			page->loaded = false;
 			list_remove(e);
 			pagedir_clear_page(owner->pagedir, page->upage);
 			palloc_free_page(frame->kpage);
 			free(frame);
-			//printf("victim return\n");
+			frame_release();
 			return palloc_get_page(PAL_USER | flags);
 	  }
+
 	  e = list_next(e);
 	  if(e==list_end(&frame_table)) e=list_begin(&frame_table);
 	}
@@ -124,7 +143,9 @@ frame_alloc(enum palloc_flags flags)
 	{ /* 실패한 경우, victim 선정해야 함 */
 		/* victim 선정 */
 		while(!frame)
+		{
 			frame = frame_victim(flags);
+		}
 		frame_set_elem(frame);
 		return frame;
 	}
@@ -134,6 +155,10 @@ void
 frame_free(void *frame)
 {
 	struct list_elem *e;
+#ifdef DEBUG
+	printf("frame_free(): frame acquire 진입\n");
+#endif	
+	frame_acquire();
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		struct frame *tmp_frame = list_entry(e, struct frame, elem);
@@ -145,4 +170,5 @@ frame_free(void *frame)
 			break;
 		}
 	}
+	frame_release();
 }

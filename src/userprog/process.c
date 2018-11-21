@@ -238,11 +238,11 @@ process_exit (void)
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
 #ifdef VM
-  frame_acquire();
+  //frame_acquire();
   //filesys_acquire();
   ptable_clear();
   //filesys_release();
-  frame_release();
+  //frame_release();
 #endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -641,14 +641,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 #ifdef VM
-      frame_acquire();
+      //frame_acquire();
       struct page *page;
-      if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable))==NULL)
+      if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)) == NULL)
       {
 #ifdef DEBUG
         printf("load_segment(): page_create() 실패********\n");
 #endif
-        frame_release();
+        //frame_release();
         return false;
       }
       if(!ptable_insert(page))
@@ -656,10 +656,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 #ifdef DEBUG
         printf("load_segment(): ptable_insert() 실패*********\\n");
 #endif
-        frame_release();
+        //frame_release();
         return false;
       }
-      frame_release();
+      //frame_release();
 #else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
@@ -704,7 +704,7 @@ setup_stack (void **esp)
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   bool success = false;
 #ifdef VM
-  frame_acquire();
+  //frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
 #else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
@@ -730,7 +730,7 @@ setup_stack (void **esp)
 #endif
           success = false;
         }
-        frame_release();
+        //frame_release();
 #endif
         *esp = PHYS_BASE;
       }
@@ -738,7 +738,7 @@ setup_stack (void **esp)
       {
 #ifdef VM
         frame_free(kpage);
-        frame_release();
+        //frame_release();
 #else
         palloc_free_page (kpage);
 #endif
@@ -762,6 +762,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
+
 bool
 install_page (void *upage, void *kpage, bool writable)
 {

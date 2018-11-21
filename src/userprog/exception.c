@@ -172,7 +172,8 @@ page_fault (struct intr_frame *f)
   /*
    *  user 주소에서 fault, page가 없음.
    */
-  if(is_user_vaddr(fault_addr) && not_present){
+  if(is_user_vaddr(fault_addr) && not_present)
+  {
     struct page *page = ptable_lookup(fault_addr);
     if(page)
     {
@@ -231,8 +232,10 @@ page_fault (struct intr_frame *f)
       }
     }
   }
+  
   if(!success) system_exit(-1);
 
+  //if (not_present || write || user) system_exit(-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

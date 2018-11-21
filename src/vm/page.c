@@ -48,7 +48,7 @@ ptable_init(struct hash *ptable)
 	if(!hash_init(ptable, ptable_hash, ptable_less, NULL)) system_exit(-1);
 }
 
-struct page*
+struct page *
 page_create(struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
@@ -56,15 +56,18 @@ page_create(struct file *file, off_t ofs, uint8_t *upage,
 	printf("page_create(): 진입\n");
 #endif
 	struct page *page = malloc(sizeof(struct page));
-  page->file = file;
-  page->offset = ofs;
-  page->upage = upage;
-  page->read_bytes = read_bytes;
-  page->zero_bytes = zero_bytes;
-  page->writable = writable;
-  page->loaded = false;
-  page->swaped = false;
-  return page;
+	if(!page) return NULL;
+
+	page->file = file;
+	page->offset = ofs;
+	page->upage = upage;
+	page->read_bytes = read_bytes;
+	page->zero_bytes = zero_bytes;
+	page->writable = writable;
+	page->loaded = false;
+	page->swaped = false;
+	return page;
+
 }
 
 bool
@@ -107,23 +110,32 @@ page_load_file(struct page *page)
 	printf("page_load_file(): 진입\n");
 #endif
 	struct thread *cur = thread_current();
-	uint8_t *kpage = frame_alloc(PAL_USER); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
+	enum palloc_flags flags = PAL_USER;
+	if (page->read_bytes == 0)
+    {
+    	flags |= PAL_ZERO;
+    }
+
+	uint8_t *kpage = frame_alloc(flags); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
 	if(!kpage) return false;
-	if(page->read_bytes>0)
+
+	if(page->read_bytes > 0)
 	{
-	filesys_acquire();
-	if(file_read_at(page->file, kpage, page->read_bytes, page->offset) != page->read_bytes)
-	{
+		filesys_acquire();
+		if(file_read_at(page->file, kpage, page->read_bytes, page->offset) != (int) page->read_bytes)
+		{
 #ifdef DEBUG
 		printf("page_load_file(): file_read_at()이 실패 -> return false******\\n");
 #endif
+			filesys_release();
+			frame_free(kpage);
+			return false;
+		}
+
 		filesys_release();
-		frame_free(kpage);
-		return false;
+		memset(kpage + page->read_bytes, 0, page->zero_bytes);
 	}
-	filesys_release();
-	memset(kpage + page->read_bytes, 0, page->zero_bytes);
-	}
+
 	if(!install_page(page->upage, kpage, page->writable))
 	{
 #ifdef DEBUG
@@ -132,6 +144,7 @@ page_load_file(struct page *page)
 		frame_free(kpage);
 		return false;
 	}
+
 	page->loaded = true;
 	struct frame *frame = frame_get_from_addr(kpage);
 	frame->alloc_page = page;
@@ -171,7 +184,7 @@ ptable_clear()
 static void
 page_destroy_function (struct hash_elem *e, void *aux UNUSED)
 {
-	struct thread *cur = thread_current();
+  struct thread *cur = thread_current();
   struct page *page;
   void *kpage;
   page = hash_entry(e, struct page, hash_elem);
