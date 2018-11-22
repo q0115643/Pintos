@@ -122,6 +122,28 @@ kill (struct intr_frame *f)
     }
 }
 
+
+bool
+page_load(bool success, struct page *page)
+{
+  if(!page->loaded)
+  {
+    if(page->swaped)
+    {
+      frame_acquire();
+      success = page_load_swap(page);
+      frame_release();
+    }
+    else
+    {
+      success = page_load_file(page);
+    }
+    if(!success) system_exit(-1);
+  }
+  return success;
+}
+
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -177,20 +199,7 @@ page_fault (struct intr_frame *f)
     struct page *page = ptable_lookup(fault_addr);
     if(page)
     {
-      if(!page->loaded)
-      {
-        if(page->swaped)
-        {
-          frame_acquire();
-          success = page_load_swap(page);
-          frame_release();
-        }
-        else
-        {
-          success = page_load_file(page);
-        }
-        if(!success) system_exit(-1);
-      }
+      success = page_load(success, page);
     }
     else
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
@@ -232,9 +241,7 @@ page_fault (struct intr_frame *f)
       }
     }
   }
-  
   if(!success) system_exit(-1);
-  //if(not_present || write || user) system_exit(-1);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
