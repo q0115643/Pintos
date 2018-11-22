@@ -161,22 +161,11 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  /*
-   *  유저 프로세스가 kernel에 접근 => exit(-1)
-   */
-  exit_if_user_access_in_kernel(fault_addr, user);
-  /* 
-   *  있는 페이지에 접근했는데 non-writable에 write하려해서 터짐
-   */
-  write_on_nonwritable_page(fault_addr, not_present, write);
-  /*
-   *  kernel에서 page fault로 넘어올때 stack pointer를 thread->esp로 복구
-   */
-  bring_esp_from_thread_struct(user, not_present, f);
+
   /*
    *  user 주소에서 fault, page가 없음.
    */
-  if(is_user_vaddr(fault_addr) && not_present)
+  if(not_present)
   {
     struct page *page = ptable_lookup(fault_addr);
     if(page)
@@ -185,20 +174,24 @@ page_fault (struct intr_frame *f)
       {
         if(page->swaped)
         {
+          frame_acquire();
           success = page_load_swap(page);
+          frame_release();
         }
         else
         {
           success = page_load_file(page);
         }
-        if(!success)
-          system_exit(-1);
       }
       if(success)
+      {
         return;
+      }
     }
-    else
+    else if(is_user_vaddr(fault_addr))
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
+      frame_acquire ();
+      bring_esp_from_thread_struct(user, not_present, f);
       if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
       { // PUSHA signal이 permission 받으러온거임.
         uint8_t *stack_page_addr = pg_round_down(fault_addr);
@@ -228,17 +221,21 @@ page_fault (struct intr_frame *f)
               success = ptable_insert(s_page);
             }
             else
+            {
+              frame_free(tmp_kpage);
+              frame_release();
               system_exit(-1);
+            }
           }
           stack_page_addr += PGSIZE;
         }
         if(success)
+        {
+          frame_release();
           return;
+        }
       }
-      else
-      {
-        system_exit(-1);
-      }
+      frame_release();
     }
   }
   
@@ -272,7 +269,7 @@ exit_if_user_access_in_kernel(void *fault_addr, bool user)
 void
 bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
 {
-  if(!user && not_present && f->esp <= PHYS_BASE - STACK_LIMIT)
+  if(!user && not_present && f->esp >= PHYS_BASE - STACK_LIMIT)
   { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
     f->esp = thread_current()->esp;
   }

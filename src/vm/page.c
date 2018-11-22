@@ -115,8 +115,9 @@ page_load_file(struct page *page)
     {
     	flags |= PAL_ZERO;
     }
-
+  frame_acquire();
 	uint8_t *kpage = frame_alloc(flags); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
+	frame_release();
 	if(!kpage) return false;
 
 	if(page->read_bytes > 0)
@@ -146,8 +147,10 @@ page_load_file(struct page *page)
 	}
 
 	page->loaded = true;
+	frame_acquire();
 	struct frame *frame = frame_get_from_addr(kpage);
 	frame->alloc_page = page;
+	frame_release();
 	pagedir_set_accessed(cur->pagedir, page->upage, true);
 	return true;
 }
@@ -156,9 +159,7 @@ bool
 page_load_swap(struct page *page)
 {
 	struct thread *cur = thread_current();
-	//void *kpage = frame_alloc(0);
 	void *kpage = frame_alloc(PAL_USER);
-
 	if(!kpage) return false;
 	
 	if(!install_page(page->upage, kpage, true))

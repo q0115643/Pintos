@@ -704,7 +704,7 @@ setup_stack (void **esp)
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   bool success = false;
 #ifdef VM
-  //frame_acquire();
+  frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
 #else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
@@ -730,7 +730,7 @@ setup_stack (void **esp)
 #endif
           success = false;
         }
-        //frame_release();
+        frame_release();
 #endif
         *esp = PHYS_BASE;
       }
@@ -738,7 +738,7 @@ setup_stack (void **esp)
       {
 #ifdef VM
         frame_free(kpage);
-        //frame_release();
+        frame_release();
 #else
         palloc_free_page (kpage);
 #endif

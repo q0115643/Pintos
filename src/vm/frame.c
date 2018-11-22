@@ -50,9 +50,7 @@ frame_set_elem(void *frame)
 #ifdef DEBUG
 	printf("frame_se_elem(): frame acquire 진입\n");
 #endif
-	frame_acquire();
 	list_push_back(&frame_table, &new_frame->elem);
-	frame_release();
 #ifdef DEBUG
 	printf("frame_se_elem(): frame release 성공\n");
 #endif
@@ -66,18 +64,14 @@ frame_get_from_addr(void *addr)
 #ifdef DEBUG
 	printf("frame_get_from_addr(): frame acquire 진입\n");
 #endif
-	frame_acquire();
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		if(list_entry(e, struct frame, elem)->kpage == addr)
 		{
-			frame_release();
 			return list_entry(e, struct frame, elem);
 		}
 	}
-
-	frame_release();
 	return NULL;
 }
 
@@ -87,7 +81,6 @@ frame_victim(enum palloc_flags flags)
 #ifdef DEBUG
 	printf("frame_victim(): frame acquire 진입\n");
 #endif	
-	frame_acquire();
 	struct frame *frame = NULL;
 	struct page *page;
 	struct thread *owner;
@@ -111,13 +104,11 @@ frame_victim(enum palloc_flags flags)
 				page->swaped = true;
 				page->swap_index = swap_out(frame->kpage);
 			} 
-
 			page->loaded = false;
 			list_remove(e);
 			pagedir_clear_page(owner->pagedir, page->upage);
 			palloc_free_page(frame->kpage);
 			free(frame);
-			frame_release();
 			return palloc_get_page(PAL_USER | flags);
 	  }
 
