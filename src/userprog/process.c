@@ -706,6 +706,7 @@ setup_stack (void **esp)
 #ifdef VM
   frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
+  frame_release();
 #else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
 #endif
@@ -715,6 +716,7 @@ setup_stack (void **esp)
       if (success)
       {
 #ifdef VM
+        frame_acquire();
         struct page *page = malloc(sizeof(struct page));
         page->upage = upage;
         page->writable = true;
@@ -737,6 +739,7 @@ setup_stack (void **esp)
       else
       {
 #ifdef VM
+        frame_acquire();
         frame_free(kpage);
         frame_release();
 #else
