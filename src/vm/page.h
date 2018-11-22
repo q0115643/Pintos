@@ -34,5 +34,7 @@ struct page* page_create(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
 bool ptable_insert(struct page *page);
 struct page* ptable_lookup(void* addr);
 bool page_load_file(struct page *page);
+bool page_load_zero (struct page *page);
+bool page_laod_swap (struct page *page);
 void ptable_clear(void);
 #endif /* vm/page.h */

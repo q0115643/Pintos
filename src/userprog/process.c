@@ -232,6 +232,68 @@ process_wait (tid_t child_tid)
   return status;
 }
 
+void
+process_remove_mmap(void)
+{
+    struct thread *t = thread_current();
+    struct list_elem *e;
+    struct page *page;
+    void *kpage;
+    struct file *file = NULL;
+    int closed = 0;
+    for(e = list_begin(&t->mmap_list); e = list_end(&t->mmap_list); e = list_next(e))
+    {
+      list_remove(&page->list_elem);
+      struct page *page = list_entry (e, struct page, list_elem);
+      kpage = pagedir_get_page(t->pagedir, page->upage);
+
+      if(!kpage)
+      {
+        hash_delete(&t->page_table, &page->hash_elem);
+      }
+
+      if(page->loaded)
+      {
+        if(pagedir_is_dirty(t->pagedir, page->upage))
+        {
+
+          filesys_acquire();
+          file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+          filesys_release();
+
+        }
+
+        frame_free(pagedir_get_page(t->pagedir,page->upage));
+        pagedir_clear_page(t->pagedir, page->upage);
+
+      }
+
+      if(page->mapid != closed)
+        {
+          if(file)
+          {
+            filesys_acquire();
+            file_close(file);
+            filesys_release();
+          }
+          closed = page->mapid;
+          file = page->file;
+
+        }
+
+      free(page);
+
+    }
+
+    if(file)
+    {
+      filesys_acquire();
+      file_close(file);
+      filesys_release();
+    }
+
+}
+
 /* Free the current process's resources. */
 void
 process_exit (void)
@@ -244,6 +306,10 @@ process_exit (void)
   //frame_acquire();
   //filesys_acquire();
   ptable_clear();
+
+  /* 모든 file을 종료 --> mmap도 모두 해제 --- erro 발생 ...*/
+  //process_remove_mmap();
+
   //filesys_release();
   //frame_release();
 #endif

@@ -177,7 +177,16 @@ syscall_handler (struct intr_frame *f UNUSED)
   		f->eax = system_mmap((int) args[0], (void *) args[1]);
   		break;
   	}
+  	case SYS_MUNMAP:
+  	{
+  		argc = 1;
+  		get_arguments(f->esp, args, argc);
+  		system_munmap((int) args[0]);
+  		break;
+  	}
+
   }
+
 }
 
 static void
@@ -440,8 +449,8 @@ system_mmap (int fd, void *addr)
     	mmap_page = page_create(file, offset, addr, page_read_bytes, page_zero_bytes, true);
     	if(!mmap_page)
     	{
-    		system_munmap(t->mapid);
     		frame_release();
+    		system_munmap(t->mapid);
     		return -1;
     	}
 
@@ -469,11 +478,11 @@ system_munmap (int mapid)
   	struct page *page;
   	void *kpage;
   	struct file *file = NULL;
-
-  	frame_acquire();
+  	struct list_elem *next;
+  	//frame_acquire();
   	if(list_empty(&t->mmap_list))
   	{
-  		frame_release();
+  		//frame_release();
   		return;
   	}
 
@@ -481,8 +490,9 @@ system_munmap (int mapid)
   	e = list_begin(&t->mmap_list);
   	while(e != list_end(&t->mmap_list))
   	{
+  		next = list_next(e);
   		page = list_entry(e, struct page, list_elem);
-  		if(page->mapid == mapid || page->mapid == -1)
+  		if(page->mapid == mapid)
   		{
   			list_remove(&page->list_elem);
   			kpage = pagedir_get_page(t->pagedir, page->upage);
@@ -522,10 +532,18 @@ system_munmap (int mapid)
   			free(page);
 
   		}
+  		e = next;
 
   	}
 
-  	frame_release();
+  	if(file)
+	{
+		filesys_acquire();
+		file_close(file);
+		filesys_release();
+	}
+
+  	//frame_release();
 	return;
 
 }

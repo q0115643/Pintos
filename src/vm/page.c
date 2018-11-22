@@ -162,6 +162,31 @@ page_load_file(struct page *page)
 }
 
 bool
+page_load_zero (struct page *page)
+{
+  struct thread *t = thread_current();
+  void *kpage = frame_alloc(PAL_ZERO);
+  bool success;
+
+  ASSERT (!page->loaded);
+
+  if (kpage == NULL) return false;
+  struct frame *frame = frame_get_from_addr(kpage);
+  frame->alloc_page = page;
+
+  success = (pagedir_get_page (t->pagedir, page->upage) == NULL && pagedir_set_page (t->pagedir, page->upage, kpage, true));
+  if (!success)
+  {
+  	frame_free (kpage);
+  	return false;
+  }
+
+  pagedir_set_accessed (t->pagedir, page->upage, true);
+  return true;
+  
+}
+
+bool
 page_load_swap(struct page *page)
 {
 	struct thread *cur = thread_current();

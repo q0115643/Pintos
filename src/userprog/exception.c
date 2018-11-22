@@ -136,7 +136,10 @@ page_load(bool success, struct page *page)
     }
     else
     {
-      success = page_load_file(page);
+      if(page->file)
+        success = page_load_file(page);
+      else
+        success = page_load_zero(page);
     }
     if(!success) system_exit(-1);
   }
