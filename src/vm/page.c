@@ -112,9 +112,9 @@ page_load_file(struct page *page)
 	struct thread *cur = thread_current();
 	enum palloc_flags flags = PAL_USER;
 	if (page->read_bytes == 0)
-    {
-    	flags |= PAL_ZERO;
-    }
+	{
+		flags |= PAL_ZERO;
+	}
   frame_acquire();
 	uint8_t *kpage = frame_alloc(flags); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
 	frame_release();
@@ -129,10 +129,11 @@ page_load_file(struct page *page)
 		printf("page_load_file(): file_read_at()이 실패 -> return false******\\n");
 #endif
 			filesys_release();
+			frame_acquire();
 			frame_free(kpage);
+			frame_release();
 			return false;
 		}
-
 		filesys_release();
 		memset(kpage + page->read_bytes, 0, page->zero_bytes);
 	}
@@ -142,7 +143,9 @@ page_load_file(struct page *page)
 #ifdef DEBUG
 		printf("page_load_file(): install_page()이 실패 -> return false******\\n");
 #endif
+		filesys_acquire();
 		frame_free(kpage);
+		filesys_release();
 		return false;
 	}
 
@@ -167,15 +170,14 @@ page_load_swap(struct page *page)
 	  frame_free(kpage);
 	  return false;
 	}
-
 	swap_in(page, kpage);
 	struct frame *frame = frame_get_from_addr(kpage);
 	page->swaped = false;
 	page->loaded = true;
 	frame->alloc_page = page;
 	pagedir_set_dirty(cur->pagedir, page->upage, true);
-  	pagedir_set_accessed(cur->pagedir, page->upage, true);
-  	return true;
+  pagedir_set_accessed(cur->pagedir, page->upage, true);
+  return true;
 }
 
 void
