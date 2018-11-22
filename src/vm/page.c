@@ -66,6 +66,9 @@ page_create(struct file *file, off_t ofs, uint8_t *upage,
 	page->writable = writable;
 	page->loaded = false;
 	page->swaped = false;
+	page->mmaped = false;
+	/* ISSUE int형에 null 넣어도 되나? */
+	//page->mapid = -1;
 	return page;
 
 }
@@ -129,9 +132,9 @@ page_load_file(struct page *page)
 		printf("page_load_file(): file_read_at()이 실패 -> return false******\\n");
 #endif
 			filesys_release();
-			frame_acquire();
+			//frame_acquire();
 			frame_free(kpage);
-			frame_release();
+			//frame_release();
 			return false;
 		}
 		filesys_release();

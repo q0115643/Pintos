@@ -14,6 +14,7 @@ struct page
 {
 	void *upage;	/* Virtual address */
 	struct hash_elem hash_elem;	/* Hash element */
+	struct list_elem list_elem;
 	struct thread *page_owner;
 	struct file *file;
 	off_t offset;
@@ -22,8 +23,9 @@ struct page
 	bool writable;
 	bool loaded;
 	bool swaped;
+	bool mmaped;
+	int mapid;
 	size_t swap_index;
-	
 	
 };
 

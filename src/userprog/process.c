@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <user/syscall.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -166,6 +167,8 @@ start_process (void *f_name)
 
 #ifdef VM
   ptable_init(&cur->page_table);
+  /* mmap 초기화 */
+  list_init(&cur->mmap_list);
 #endif
 
   file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기

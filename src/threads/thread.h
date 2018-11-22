@@ -128,6 +128,10 @@ struct thread
 #ifdef VM
     struct hash page_table;             /* Page table. */
     void *esp;                          /* Stack Pointer. */
+
+    /* start process에서 초기화 */
+    struct list mmap_list;              /* mmap table */
+    int mapid;                          /* mapid */
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
