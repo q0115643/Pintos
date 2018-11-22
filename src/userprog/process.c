@@ -706,7 +706,6 @@ setup_stack (void **esp)
 #ifdef VM
   frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
-  frame_release();
 #else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
 #endif
@@ -722,9 +721,7 @@ setup_stack (void **esp)
         page->loaded = true;
         page->file = NULL;
         page->swaped = false;
-        frame_acquire();
         struct frame *frame = frame_get_from_addr(kpage);
-        frame_release();
         frame->alloc_page = page;
         if(!ptable_insert(page))
         {
@@ -733,13 +730,13 @@ setup_stack (void **esp)
 #endif
           success = false;
         }
+        frame_release();
 #endif
         *esp = PHYS_BASE;
       }
       else
       {
 #ifdef VM
-        frame_acquire();
         frame_free(kpage);
         frame_release();
 #else
