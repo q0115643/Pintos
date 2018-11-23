@@ -507,61 +507,52 @@ system_munmap(int mapid)
 		return;
 	}
 	int closed = 0;
-	e = list_begin(&curr->mmap_list);
+	e = list_front(&curr->mmap_list);
 	bool file_put = false;
 	while(e != list_end(&curr->mmap_list))
 	{
-		next = list_next(e);
 		page = list_entry(e, struct page, list_elem);
 		if(page->mapid < mapid)
     {
-      e = next;
+      e = list_next(e);
       continue;
     }
 	  else if(page->mapid > mapid)
 	  {
 	    break;
 	  }
-		else
+		list_remove(&page->list_elem);
+		kpage = pagedir_get_page(curr->pagedir, page->upage);
+		if(!kpage)
 		{
-			list_remove(&page->list_elem);
-			kpage = pagedir_get_page(curr->pagedir, page->upage);
-			if(!kpage)
-			{
-				hash_delete(&curr->page_table, &page->hash_elem);
-				free(page);
-				e = next;
-				continue;
-			}
-			if(page->loaded == true)
-			{
-				if(pagedir_is_dirty(curr->pagedir, page->upage))
-				{
-					frame_release();
-	  			filesys_acquire();
-	  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-	  			filesys_release();
-	  			frame_acquire();
-				}
-      	pagedir_clear_page(curr->pagedir, page->upage);
-			}
-			if(!file_put)
-			{
-				file = page->file;
-				file_put = true;
-			}
+			hash_delete(&curr->page_table, &page->hash_elem);
 			free(page);
-			frame_free(kpage);
+			e = list_next(e);
+			continue;
 		}
-		e = next;
+		if(page->loaded == true)
+		{
+			if(pagedir_is_dirty(curr->pagedir, page->upage))
+			{
+				frame_release();
+  			filesys_acquire();
+  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+  			filesys_release();
+  			frame_acquire();
+			}
+		}
+		if(!file_put)
+		{
+			file = page->file;
+			file_put = true;
+		}
+		pagedir_clear_page(curr->pagedir, page->upage);
+		hash_delete(&curr->page_table, &page->hash_elem);
+		free(page);
+		frame_free(kpage);
+		e = list_next(e);
 	}
 	frame_release();
-	if(file)
-	{
-		filesys_acquire();
-		file_close(file);
-		filesys_release();
-	}
 	return;
 }
 
