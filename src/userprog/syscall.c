@@ -428,9 +428,7 @@ system_mmap (int fd, void *addr)
 
 	/* file의 length 알아오기 */
 	off_t read_bytes;
-	filesys_acquire ();
   	read_bytes = file_length(file);
-  	filesys_release ();
   	if(read_bytes == 0) return -1;
 
   	/* address 검사 */
