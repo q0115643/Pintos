@@ -69,20 +69,15 @@ page_create(struct file *file, off_t ofs, uint8_t *upage,
 	page->mmaped = false;
 	/* ISSUE int형에 null 넣어도 되나? */
 	page->mapid = -1;
+	page->busy = false;
 	return page;
 }
 
 bool
 ptable_insert(struct page *page)
 {
-#ifdef DEBUG
-	printf("ptable_insert(): 진입\n");
-#endif
 	if(!hash_insert(&thread_current()->page_table, &page->hash_elem))
 	{
-#ifdef DEBUG
-		printf("ptable_insert(): 성공\n");
-#endif
     return true;
 	}
   return false;
@@ -91,9 +86,6 @@ ptable_insert(struct page *page)
 struct page*
 ptable_lookup(void* addr)
 {
-#ifdef DEBUG
-	printf("ptable_lookup(): 진입\n");
-#endif
 	void* rounded_addr;
 	rounded_addr = pg_round_down(addr);
 	struct page page;
@@ -121,33 +113,26 @@ page_load_file(struct page *page)
 	if(!kpage) return false;
 	if(page->read_bytes > 0)
 	{
-		frame_release();
 		filesys_acquire();
 		if(file_read_at(page->file, kpage, page->read_bytes, page->offset) != (int) page->read_bytes)
 		{
-#ifdef DEBUG
-		printf("page_load_file(): file_read_at()이 실패 -> return false******\\n");
-#endif
 			filesys_release();
-			frame_acquire();
 			frame_free(kpage);
 			return false;
 		}
 		filesys_release();
-		frame_acquire();
 		memset(kpage + page->read_bytes, 0, page->zero_bytes);
 	}
 	if(!install_page(page->upage, kpage, page->writable))
 	{
-#ifdef DEBUG
-		printf("page_load_file(): install_page()이 실패 -> return false******\\n");
-#endif
 		frame_free(kpage);
 		return false;
 	}
 	page->loaded = true;
+	frame_acquire();
 	struct frame *frame = frame_get_from_addr(kpage);
 	frame->alloc_page = page;
+	frame_release();
 	pagedir_set_accessed(cur->pagedir, page->upage, true);
 	return true;
 }
@@ -160,15 +145,17 @@ page_load_zero (struct page *page)
   bool success;
   ASSERT (!page->loaded);
   if (kpage == NULL) return false;
+  frame_acquire();
   struct frame *frame = frame_get_from_addr(kpage);
   frame->alloc_page = page;
+  frame_release();
   success = (pagedir_get_page (t->pagedir, page->upage) == NULL && pagedir_set_page (t->pagedir, page->upage, kpage, true));
   if (!success)
   {
   	frame_free (kpage);
   	return false;
   }
-  pagedir_set_accessed (t->pagedir, page->upage, true);
+  pagedir_set_accessed(t->pagedir, page->upage, true);
   return true;
 }
 
@@ -178,17 +165,18 @@ page_load_swap(struct page *page)
 	struct thread *cur = thread_current();
 	void *kpage = frame_alloc(PAL_USER);
 	if(!kpage) return false;
-	
 	if(!install_page(page->upage, kpage, true))
 	{
 	  frame_free(kpage);
 	  return false;
 	}
 	swap_in(page, kpage);
+	frame_acquire();
 	struct frame *frame = frame_get_from_addr(kpage);
 	page->swaped = false;
 	page->loaded = true;
 	frame->alloc_page = page;
+	frame_release();
 	pagedir_set_dirty(cur->pagedir, page->upage, true);
   pagedir_set_accessed(cur->pagedir, page->upage, true);
   return true;
@@ -209,24 +197,13 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   struct page *page;
   void *kpage;
   page = hash_entry(e, struct page, hash_elem);
+  page->busy = true;
   kpage = pagedir_get_page(cur->pagedir, page->upage);
   if(kpage != NULL)
   {
-	  if(page->mapid != MAP_FAILED)
-    {
-    	if(pagedir_is_dirty(cur->pagedir, page->upage))
-    	{
-    		frame_release();
-    		filesys_acquire();
-      	file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-      	filesys_release();
-      	frame_acquire();
-      }
-    	list_remove (&page->list_elem);
-    }
-    pagedir_clear_page(cur->pagedir, page->upage);
-    frame_free(kpage);
+  	frame_free(kpage);
   }
+  pagedir_clear_page(cur->pagedir, page->upage);
   free(page);
 }
 

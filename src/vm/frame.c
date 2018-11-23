@@ -47,13 +47,9 @@ frame_set_elem(void *frame)
 	new_frame->frame_owner = thread_current();
 	new_frame->alloc_page = NULL;
 	/* frame table(list)에 넣어야 함 */
-#ifdef DEBUG
-	printf("frame_se_elem(): frame acquire 진입\n");
-#endif
+	frame_acquire();
 	list_push_back(&frame_table, &new_frame->elem);
-#ifdef DEBUG
-	printf("frame_se_elem(): frame release 성공\n");
-#endif
+	frame_release();
 	return;
 }
 
@@ -61,9 +57,6 @@ frame_set_elem(void *frame)
 struct frame *
 frame_get_from_addr(void *addr)
 {
-#ifdef DEBUG
-	printf("frame_get_from_addr(): frame acquire 진입\n");
-#endif
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
@@ -78,9 +71,6 @@ frame_get_from_addr(void *addr)
 void *
 frame_victim(enum palloc_flags flags)
 {
-#ifdef DEBUG
-	printf("frame_victim(): frame acquire 진입\n");
-#endif	
 	struct frame *frame = NULL;
 	struct page *page;
 	struct thread *owner;
@@ -92,36 +82,36 @@ frame_victim(enum palloc_flags flags)
 		frame = list_entry(e, struct frame, elem);
 		owner = frame->frame_owner;
 		page = frame->alloc_page;
-		if(pagedir_is_accessed(owner->pagedir, page->upage))
+		if(!page->busy)
 		{
-			pagedir_set_accessed(owner->pagedir, page->upage, false);
-		} 
-		else
-		{	
-			if(pagedir_is_dirty(owner->pagedir, page->upage) || page->swaped == true)
+			if(pagedir_is_accessed(owner->pagedir, page->upage))
 			{
-				if (page->mapid != MAP_FAILED)
-        {
-        	frame_release();
-          filesys_acquire ();
-          file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-          filesys_release ();
-          frame_acquire();
-          page->loaded = false;
-        }
-        else
-        {
-					page->swaped = true;
-					page->swap_index = swap_out(frame->kpage);
+				pagedir_set_accessed(owner->pagedir, page->upage, false);
+			} 
+			else
+			{	
+				if(pagedir_is_dirty(owner->pagedir, page->upage) || page->swaped)
+				{
+					if (page->mapid != MAP_FAILED)
+	        {
+	          filesys_acquire ();
+	          file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+	          filesys_release ();
+	        }
+	        else
+	        {
+						page->swaped = true;
+						page->swap_index = swap_out(frame->kpage);
+					}
 				}
-			}
-			page->loaded = false;
-			list_remove(e);
-			pagedir_clear_page(owner->pagedir, page->upage);
-			palloc_free_page(frame->kpage);
-			free(frame);
-			return palloc_get_page(PAL_USER | flags);
-	  }
+				page->loaded = false;
+				list_remove(e);
+				pagedir_clear_page(owner->pagedir, page->upage);
+				palloc_free_page(frame->kpage);
+				free(frame);
+				return palloc_get_page(PAL_USER | flags);
+		  }
+		}
 	  e = list_next(e);
 	  if(e==list_end(&frame_table)) e=list_begin(&frame_table);
 	}
@@ -145,7 +135,9 @@ frame_alloc(enum palloc_flags flags)
 		/* victim 선정 */
 		while(!frame)
 		{
+			frame_acquire();
 			frame = frame_victim(flags);
+			frame_release();
 		}
 		frame_set_elem(frame);
 		return frame;
@@ -156,9 +148,7 @@ void
 frame_free(void *frame)
 {
 	struct list_elem *e;
-#ifdef DEBUG
-	printf("frame_free(): frame acquire 진입\n");
-#endif	
+	frame_acquire();
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		struct frame *tmp_frame = list_entry(e, struct frame, elem);
@@ -170,4 +160,5 @@ frame_free(void *frame)
 			break;
 		}
 	}
+	frame_release();
 }

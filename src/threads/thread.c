@@ -529,12 +529,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->acquiring_lock = NULL;
   list_init(&t->lock_list);
   t->original_priority = priority;
-#ifdef USERPROG
+  /* mmap 초기화 */
+  list_init(&t->mmap_list);
+  t->mapid = 0;
+  /* project 2를 위한 것들 */
   sema_init(&t->load_sema, 0);
   list_init (&t->fd_list);
   list_init (&t->child_list);
   t->fd_count = 2;
-#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

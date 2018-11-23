@@ -100,9 +100,6 @@ void alert_parent(void)
 tid_t
 process_execute (const char *cmdline) 
 {
-#ifdef DEBUG
-  printf("process_execute(): 진입\n");
-#endif
   char *cmd_copy;
   char *cmd_copy2;
   char *file_name;
@@ -167,9 +164,6 @@ start_process (void *f_name)
 
 #ifdef VM
   ptable_init(&cur->page_table);
-  /* mmap 초기화 */
-  list_init(&cur->mmap_list);
-  cur->mapid = 1;
 #endif
 
   file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기
@@ -290,6 +284,53 @@ process_remove_mmap(void)
 
 }
 
+void
+mmap_clear()
+{
+  struct thread *curr = thread_current();
+  struct list_elem *e;
+  struct list_elem *next;
+  struct page *page;
+  void *kpage;
+  struct file *file = NULL;
+  if(list_empty(&curr->mmap_list))
+    return;
+  int closed = 0;
+  e = list_begin(&curr->mmap_list);
+  bool file_put = false;
+  while(e != list_end(&curr->mmap_list))
+  {
+    next = list_next(e);
+    page = list_entry(e, struct page, list_elem);
+    page->busy = true;
+    list_remove(&page->list_elem);
+    if(pagedir_is_dirty(curr->pagedir, page->upage))
+    {
+      filesys_acquire();
+      file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+      filesys_release();
+    }
+    frame_free(pagedir_get_page(curr->pagedir, page->upage));
+    pagedir_clear_page(curr->pagedir, page->upage);
+    hash_delete(&curr->page_table, &page->hash_elem);
+    if (page->mapid != closed)
+    {
+      if(file)
+      {
+        filesys_acquire();
+        file_close(file);
+        filesys_release();
+      }
+      closed = page->mapid;
+      file = page->file;
+    }
+    free(page);
+    frame_free(kpage);
+    e = next;
+  }
+  return;
+}
+
 /* Free the current process's resources. */
 void
 process_exit (void)
@@ -298,14 +339,8 @@ process_exit (void)
   uint32_t *pd;
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
-#ifdef VM
-  /* 모든 file을 종료 --> mmap도 모두 해제 --- erro 발생 ...*/
-  //process_remove_mmap();
-
-  frame_acquire();
+  mmap_clear();
   ptable_clear();
-  frame_release();
-#endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -700,18 +735,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       struct page *page;
-      frame_acquire();
       if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)) == NULL)
       {
-        frame_release();
         return false;
       }
       if(!ptable_insert(page))
       {
-        frame_release();
         return false;
       }
-      frame_release();
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -730,7 +761,6 @@ setup_stack (void **esp)
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   bool success = false;
-  frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -744,19 +774,20 @@ setup_stack (void **esp)
         page->file = NULL;
         page->swaped = false;
         page->mapid = -1;
+        page->busy = false;
+        frame_acquire();
         struct frame *frame = frame_get_from_addr(kpage);
         frame->alloc_page = page;
+        frame_release();
         if(!ptable_insert(page))
         {
           success = false;
         }
-        frame_release();
         *esp = PHYS_BASE;
       }
       else
       {
         frame_free(kpage);
-        frame_release();
       }
     }
   return success;

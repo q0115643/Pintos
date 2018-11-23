@@ -26,7 +26,7 @@ struct page
 	bool mmaped;
 	int mapid;
 	size_t swap_index;
-	
+	bool busy;
 };
 
 void ptable_init(struct hash *ptable);

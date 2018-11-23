@@ -131,26 +131,72 @@ page_load(bool success, struct page *page)
     if(page->swaped)
     {
       success = page_load_swap(page);
-      frame_release();
     }
     else
     {
       if(page->file)
       {
         success = page_load_file(page);
-        frame_release();
       }
       else
       {
         success = page_load_zero(page);
-        frame_release();
       }
     }
-    if(!success) system_exit(-1);
   }
   return success;
 }
 
+bool
+stack_growth(bool success, void* fault_addr)
+{
+  uint8_t *stack_page_addr = pg_round_down(fault_addr);
+  while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
+  {
+    if(ptable_lookup(stack_page_addr))
+    {
+      stack_page_addr += PGSIZE;
+      continue;
+    }
+    struct page *s_page = malloc(sizeof(struct page));
+    s_page->upage = stack_page_addr;
+    s_page->writable = true;
+    s_page->loaded = true;
+    s_page->file = NULL;
+    s_page->swaped = false;
+    s_page->mapid = -1;
+    s_page->busy = true;
+    uint8_t *tmp_kpage;
+    tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
+    if (!tmp_kpage)
+    {
+      frame_free(tmp_kpage);
+      free(s_page);
+      return false;
+    }
+    success = install_page(stack_page_addr, tmp_kpage, true);
+    if(!success)
+    {
+      frame_free(tmp_kpage);
+      free(s_page);
+      return success;
+    }
+    frame_acquire();
+    struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
+    tmp_frame->alloc_page = s_page;
+    frame_release();
+    success = ptable_insert(s_page);
+    if(!success)
+    {
+      frame_free(tmp_kpage);
+      free(s_page);
+      return success;
+    }
+    s_page->busy = false;
+    stack_page_addr += PGSIZE;
+  }
+  return success;
+}
 
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
@@ -191,80 +237,45 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  /*
-   *  유저 프로세스가 kernel에 접근 => exit(-1)
-   */
-  exit_if_user_access_in_kernel(fault_addr, user);
-  /* 
-   *  있는 페이지에 접근했는데 non-writable에 write하려해서 터짐
-   */
-  write_on_nonwritable_page(fault_addr, not_present, write);
+
   /*
    *  user 주소에서 fault, page가 없음.
    */
   if(is_user_vaddr(fault_addr) && not_present)
   {
-    frame_acquire();
     struct page *page = ptable_lookup(fault_addr);
     if(page)
     {
+      page->busy = true;
       success = page_load(success, page);
+      page->busy = false;
+      if(success)
+        return;
     }
     else
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
       bring_esp_from_thread_struct(user, not_present, f);
       if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
       { // PUSHA signal이 permission 받으러온거임.
-        uint8_t *stack_page_addr = pg_round_down(fault_addr);
-        frame_release();
-        while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
-        {
-          frame_acquire();
-          if(ptable_lookup(stack_page_addr))
-          {
-            stack_page_addr += PGSIZE;
-            frame_release();
-            continue;
-          }
-          uint8_t *tmp_kpage;
-          tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
-          if (tmp_kpage != NULL)
-          {
-            success = install_page (stack_page_addr, tmp_kpage, true);
-            if(success)
-            {
-              struct page *s_page = malloc(sizeof(struct page));
-              s_page->upage = stack_page_addr;
-              s_page->writable = true;
-              s_page->loaded = true;
-              s_page->file = NULL;
-              s_page->swaped = false;
-              s_page->mapid = -1;
-              struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
-              tmp_frame->alloc_page = s_page;
-              success = ptable_insert(s_page);
-            }
-          }
-          frame_release();
-          stack_page_addr += PGSIZE;
-        }
+        success = stack_growth(success, fault_addr);
+        if(success)
+          return;
       }
     }
   }
-  if(!success) system_exit(-1);
-
+  system_exit(-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  if(!success)
-  {
-    printf ("Page fault at %p: %s error %s page in %s context.\n",
-            fault_addr,
-            not_present ? "not present" : "rights violation",
-            write ? "writing" : "reading",
-            user ? "user" : "kernel");
-    kill (f);
-  }
+  // if(!success)
+  // {
+  //   printf ("Page fault at %p: %s error %s page in %s context.\n",
+  //           fault_addr,
+  //           not_present ? "not present" : "rights violation",
+  //           write ? "writing" : "reading",
+  //           user ? "user" : "kernel");
+  //   kill (f);
+  // }
 }
 
 /* Help functions. */
