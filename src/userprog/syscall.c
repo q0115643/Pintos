@@ -415,6 +415,32 @@ system_close(int fd)
 	}
 }
 
+bool 
+mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes)
+{
+  struct thread *curr = thread_current();
+  struct page *page = malloc(sizeof(struct page));
+  if (!page) return false;
+
+  page->file = file;
+  page->offset = ofs;
+  page->upage = upage;
+  page->read_bytes = read_bytes;
+  page->zero_bytes = zero_bytes;
+  page->loaded = false;
+  page->mmaped = true;
+  page->writable = true;
+
+  if(!ptable_insert(page)) 
+  {
+  	free(page);
+  	return false;
+  }
+
+  list_push_back (&curr->mmap_list, &page->list_elem);
+  return true;
+
+}
 
 
 static int
@@ -437,27 +463,28 @@ system_mmap (int fd, void *addr)
 	frame_acquire ();
 	struct thread *curr = thread_current();
 	mapid = curr->mapid++;
+
 	while (read_bytes > 0)
-  {
-  	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
-  	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
-  	mmap_page = page_create(file, offset, addr, page_read_bytes, page_zero_bytes, true);
-  	if(!mmap_page || ptable_lookup(addr))
-  	{
-  		frame_release();
-  		system_munmap(curr->mapid);
-  		return -1;
+	{
+	  	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
+	  	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+	  	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes))
+	  	{
+	  		frame_release();
+	  		system_munmap(curr->mapid);
+	  		return -1;
+	  	}
+
+	  	read_bytes -= page_read_bytes;
+      	offset += page_read_bytes;
+      	addr += PGSIZE;
+
+
   	}
-  	mmap_page->mmaped = true;
-  	mmap_page->mapid = mapid;
-  	ptable_insert(mmap_page);
-  	list_push_back (&curr->mmap_list, &mmap_page->list_elem);
-  	read_bytes -= page_read_bytes;
-  	offset += page_read_bytes;
-  	addr += PGSIZE;
-  }
-  frame_release ();
-	return mapid;
+
+  	frame_release ();
+	return curr->mapid;
 
 }
 
@@ -500,12 +527,13 @@ system_munmap (int mapid)
 			{
 				if (pagedir_is_dirty(curr->pagedir, page->upage))
 				{
-	  			filesys_acquire();
-	  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-	  			filesys_release();
+		  			filesys_acquire();
+		  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+		  			filesys_release();
 				}
-      	pagedir_clear_page(curr->pagedir, page->upage);
+      			pagedir_clear_page(curr->pagedir, page->upage);
 			}
+
 			if(page->mapid != closed)
 			{
 				if(file)
@@ -517,15 +545,16 @@ system_munmap (int mapid)
 				closed = page->mapid;
 				file = page->file;
 			}
+
 			free(page);
 		}
 		e = next;
 	}
 	if(file)
 	{
-	filesys_acquire();
-	file_close(file);
-	filesys_release();
+		filesys_acquire();
+		file_close(file);
+		filesys_release();
 	}
 	return;
 }

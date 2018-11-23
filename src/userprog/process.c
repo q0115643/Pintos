@@ -239,19 +239,13 @@ process_remove_mmap(void)
     struct thread *t = thread_current();
     struct list_elem *e;
     struct page *page;
-    void *kpage;
     struct file *file = NULL;
     int closed = 0;
+
     for(e = list_begin(&t->mmap_list); e = list_end(&t->mmap_list); e = list_next(e))
     {
       list_remove(&page->list_elem);
       struct page *page = list_entry (e, struct page, list_elem);
-      kpage = pagedir_get_page(t->pagedir, page->upage);
-
-      if(!kpage)
-      {
-        hash_delete(&t->page_table, &page->hash_elem);
-      }
 
       if(page->loaded)
       {
@@ -277,6 +271,7 @@ process_remove_mmap(void)
             file_close(file);
             filesys_release();
           }
+
           closed = page->mapid;
           file = page->file;
 
@@ -304,12 +299,14 @@ process_exit (void)
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
 #ifdef VM
+  /* 모든 file을 종료 --> mmap도 모두 해제 --- erro 발생 ...*/
+  //process_remove_mmap();
+
   //frame_acquire();
   //filesys_acquire();
   ptable_clear();
 
-  /* 모든 file을 종료 --> mmap도 모두 해제 --- erro 발생 ...*/
-  //process_remove_mmap();
+
 
   //filesys_release();
   //frame_release();
