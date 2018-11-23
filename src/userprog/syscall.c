@@ -32,6 +32,7 @@ static unsigned system_tell(int fd);
 static void system_close(int fd);
 static int system_mmap (int fd, void *addr);
 static void system_munmap (int mapid);
+static void unmap (int mapid);
 
 //#define DEBUG
 
@@ -416,7 +417,7 @@ system_close(int fd)
 }
 
 bool 
-mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes)
+mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, int mapid)
 {
   struct thread *curr = thread_current();
   struct page *page = malloc(sizeof(struct page));
@@ -430,6 +431,7 @@ mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_b
   page->loaded = false;
   page->mmaped = true;
   page->writable = true;
+  page->mapid = mapid;
 
   if(!ptable_insert(page)) 
   {
@@ -463,33 +465,26 @@ system_mmap (int fd, void *addr)
 	frame_acquire ();
 	struct thread *curr = thread_current();
 	mapid = curr->mapid++;
-
 	while (read_bytes > 0)
 	{
-	  	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
-	  	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-	  	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes))
-	  	{
-	  		frame_release();
-	  		system_munmap(curr->mapid);
-	  		return -1;
-	  	}
-
-	  	read_bytes -= page_read_bytes;
-      	offset += page_read_bytes;
-      	addr += PGSIZE;
-
-
+  	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
+  	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
+  	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes, mapid))
+  	{
+  		frame_release();
+  		system_munmap(curr->mapid);
+  		return -1;
   	}
-
-  	frame_release ();
+  	read_bytes -= page_read_bytes;
+    offset += page_read_bytes;
+    addr += PGSIZE;
+	}
+	frame_release();
 	return curr->mapid;
-
 }
 
 static void
-system_munmap (int mapid)
+system_munmap(int mapid)
 {
 	struct thread *curr = thread_current();
 	struct list_elem *e;
@@ -497,13 +492,15 @@ system_munmap (int mapid)
 	void *kpage;
 	struct file *file = NULL;
 	struct list_elem *next;
+	frame_acquire();
 	if(list_empty(&curr->mmap_list))
 	{
+		frame_release();
 		return;
 	}
-
 	int closed = 0;
 	e = list_begin(&curr->mmap_list);
+	bool file_put = false;
 	while(e != list_end(&curr->mmap_list))
 	{
 		next = list_next(e);
@@ -514,7 +511,9 @@ system_munmap (int mapid)
       continue;
     }
 	  else if(page->mapid > mapid)
+	  {
 	    break;
+	  }
 		else
 		{
 			list_remove(&page->list_elem);
@@ -522,34 +521,33 @@ system_munmap (int mapid)
 			if(!kpage)
 			{
 				hash_delete(&curr->page_table, &page->hash_elem);
+				free(page);
+				e = next;
+				continue;
 			}
 			if(page->loaded == true)
 			{
-				if (pagedir_is_dirty(curr->pagedir, page->upage))
+				if(pagedir_is_dirty(curr->pagedir, page->upage))
 				{
-		  			filesys_acquire();
-		  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-		  			filesys_release();
+					frame_release();
+	  			filesys_acquire();
+	  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+	  			filesys_release();
+	  			frame_acquire();
 				}
-      			pagedir_clear_page(curr->pagedir, page->upage);
+      	pagedir_clear_page(curr->pagedir, page->upage);
 			}
-
-			if(page->mapid != closed)
+			if(!file_put)
 			{
-				if(file)
-				{
-					filesys_acquire();
-					file_close(file);
-					filesys_release();
-				}
-				closed = page->mapid;
 				file = page->file;
+				file_put = true;
 			}
-
 			free(page);
+			frame_free(kpage);
 		}
 		e = next;
 	}
+	frame_release();
 	if(file)
 	{
 		filesys_acquire();

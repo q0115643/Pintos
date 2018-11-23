@@ -98,12 +98,23 @@ frame_victim(enum palloc_flags flags)
 		} 
 		else
 		{	
-			//printf("victim 찾음\n");
 			if(pagedir_is_dirty(owner->pagedir, page->upage) || page->swaped == true)
 			{
-				page->swaped = true;
-				page->swap_index = swap_out(frame->kpage);
-			} 
+				if (page->mapid != MAP_FAILED)
+        {
+        	frame_release();
+          filesys_acquire ();
+          file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+          filesys_release ();
+          frame_acquire();
+          page->loaded = false;
+        }
+        else
+        {
+					page->swaped = true;
+					page->swap_index = swap_out(frame->kpage);
+				}
+			}
 			page->loaded = false;
 			list_remove(e);
 			pagedir_clear_page(owner->pagedir, page->upage);
@@ -111,7 +122,6 @@ frame_victim(enum palloc_flags flags)
 			free(frame);
 			return palloc_get_page(PAL_USER | flags);
 	  }
-
 	  e = list_next(e);
 	  if(e==list_end(&frame_table)) e=list_begin(&frame_table);
 	}

@@ -130,16 +130,21 @@ page_load(bool success, struct page *page)
   {
     if(page->swaped)
     {
-      frame_acquire();
       success = page_load_swap(page);
       frame_release();
     }
     else
     {
       if(page->file)
+      {
         success = page_load_file(page);
+        frame_release();
+      }
       else
+      {
         success = page_load_zero(page);
+        frame_release();
+      }
     }
     if(!success) system_exit(-1);
   }
@@ -199,6 +204,7 @@ page_fault (struct intr_frame *f)
    */
   if(is_user_vaddr(fault_addr) && not_present)
   {
+    frame_acquire();
     struct page *page = ptable_lookup(fault_addr);
     if(page)
     {
@@ -210,17 +216,18 @@ page_fault (struct intr_frame *f)
       if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
       { // PUSHA signal이 permission 받으러온거임.
         uint8_t *stack_page_addr = pg_round_down(fault_addr);
+        frame_release();
         while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
         {
+          frame_acquire();
           if(ptable_lookup(stack_page_addr))
           {
             stack_page_addr += PGSIZE;
+            frame_release();
             continue;
           }
           uint8_t *tmp_kpage;
-          frame_acquire();
           tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
-          frame_release();
           if (tmp_kpage != NULL)
           {
             success = install_page (stack_page_addr, tmp_kpage, true);
@@ -232,13 +239,13 @@ page_fault (struct intr_frame *f)
               s_page->loaded = true;
               s_page->file = NULL;
               s_page->swaped = false;
-              frame_acquire();
+              s_page->mapid = -1;
               struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
               tmp_frame->alloc_page = s_page;
-              frame_release();
               success = ptable_insert(s_page);
             }
           }
+          frame_release();
           stack_page_addr += PGSIZE;
         }
       }

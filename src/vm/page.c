@@ -68,9 +68,8 @@ page_create(struct file *file, off_t ofs, uint8_t *upage,
 	page->swaped = false;
 	page->mmaped = false;
 	/* ISSUE int형에 null 넣어도 되나? */
-	//page->mapid = -1;
+	page->mapid = -1;
 	return page;
-
 }
 
 bool
@@ -118,13 +117,11 @@ page_load_file(struct page *page)
 	{
 		flags |= PAL_ZERO;
 	}
-  frame_acquire();
 	uint8_t *kpage = frame_alloc(flags); // 여기에 ZERO가 붙으면 다 0로 초기화되서 옴. 무조건.
-	frame_release();
 	if(!kpage) return false;
-
 	if(page->read_bytes > 0)
 	{
+		frame_release();
 		filesys_acquire();
 		if(file_read_at(page->file, kpage, page->read_bytes, page->offset) != (int) page->read_bytes)
 		{
@@ -134,29 +131,23 @@ page_load_file(struct page *page)
 			filesys_release();
 			frame_acquire();
 			frame_free(kpage);
-			frame_release();
 			return false;
 		}
 		filesys_release();
+		frame_acquire();
 		memset(kpage + page->read_bytes, 0, page->zero_bytes);
 	}
-
 	if(!install_page(page->upage, kpage, page->writable))
 	{
 #ifdef DEBUG
 		printf("page_load_file(): install_page()이 실패 -> return false******\\n");
 #endif
-		frame_acquire();
 		frame_free(kpage);
-		frame_release();
 		return false;
 	}
-
 	page->loaded = true;
-	frame_acquire();
 	struct frame *frame = frame_get_from_addr(kpage);
 	frame->alloc_page = page;
-	frame_release();
 	pagedir_set_accessed(cur->pagedir, page->upage, true);
 	return true;
 }
@@ -165,22 +156,16 @@ bool
 page_load_zero (struct page *page)
 {
   struct thread *t = thread_current();
-  frame_acquire();
   void *kpage = frame_alloc(PAL_ZERO);
-  frame_release();
   bool success;
   ASSERT (!page->loaded);
   if (kpage == NULL) return false;
-  frame_acquire();
   struct frame *frame = frame_get_from_addr(kpage);
   frame->alloc_page = page;
-  frame_release();
   success = (pagedir_get_page (t->pagedir, page->upage) == NULL && pagedir_set_page (t->pagedir, page->upage, kpage, true));
   if (!success)
   {
-  	frame_acquire();
   	frame_free (kpage);
-  	frame_release();
   	return false;
   }
   pagedir_set_accessed (t->pagedir, page->upage, true);
@@ -225,12 +210,22 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   void *kpage;
   page = hash_entry(e, struct page, hash_elem);
   kpage = pagedir_get_page(cur->pagedir, page->upage);
-  if (kpage != NULL)
+  if(kpage != NULL)
   {
-      pagedir_clear_page(cur->pagedir, page->upage);
-      frame_acquire();
-      frame_free(kpage);
-      frame_release();
+	  if(page->mapid != MAP_FAILED)
+    {
+    	if(pagedir_is_dirty(cur->pagedir, page->upage))
+    	{
+    		frame_release();
+    		filesys_acquire();
+      	file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+      	filesys_release();
+      	frame_acquire();
+      }
+    	list_remove (&page->list_elem);
+    }
+    pagedir_clear_page(cur->pagedir, page->upage);
+    frame_free(kpage);
   }
   free(page);
 }

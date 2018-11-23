@@ -302,14 +302,9 @@ process_exit (void)
   /* 모든 file을 종료 --> mmap도 모두 해제 --- erro 발생 ...*/
   //process_remove_mmap();
 
-  //frame_acquire();
-  //filesys_acquire();
+  frame_acquire();
   ptable_clear();
-
-
-
-  //filesys_release();
-  //frame_release();
+  frame_release();
 #endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -708,25 +703,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 #ifdef VM
-      //frame_acquire();
       struct page *page;
+      frame_acquire();
       if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)) == NULL)
       {
-#ifdef DEBUG
-        printf("load_segment(): page_create() 실패********\n");
-#endif
-        //frame_release();
+        frame_release();
         return false;
       }
       if(!ptable_insert(page))
       {
-#ifdef DEBUG
-        printf("load_segment(): ptable_insert() 실패*********\\n");
-#endif
-        //frame_release();
+        frame_release();
         return false;
       }
-      //frame_release();
+      frame_release();
 #else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
@@ -773,7 +762,6 @@ setup_stack (void **esp)
 #ifdef VM
   frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
-  frame_release();
 #else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
 #endif
@@ -783,13 +771,13 @@ setup_stack (void **esp)
       if (success)
       {
 #ifdef VM
-        frame_acquire();
         struct page *page = malloc(sizeof(struct page));
         page->upage = upage;
         page->writable = true;
         page->loaded = true;
         page->file = NULL;
         page->swaped = false;
+        page->mapid = -1;
         struct frame *frame = frame_get_from_addr(kpage);
         frame->alloc_page = page;
         if(!ptable_insert(page))
@@ -806,7 +794,6 @@ setup_stack (void **esp)
       else
       {
 #ifdef VM
-        frame_acquire();
         frame_free(kpage);
         frame_release();
 #else
@@ -814,12 +801,6 @@ setup_stack (void **esp)
 #endif
       }
     }
-#ifdef DEBUG
-  if(success)
-    printf("setup_stack(): 성공\n");
-  else
-    printf("setup_stack(): 실패******\\n");
-#endif
   return success;
 }
 
