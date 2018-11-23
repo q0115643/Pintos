@@ -169,6 +169,7 @@ start_process (void *f_name)
   ptable_init(&cur->page_table);
   /* mmap 초기화 */
   list_init(&cur->mmap_list);
+  cur->mapid = 1;
 #endif
 
   file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기

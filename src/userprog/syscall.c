@@ -425,45 +425,38 @@ system_mmap (int fd, void *addr)
 	f = get_file_from_fd(fd);
 	if(!f) return -1;
 	struct file *file = file_reopen(f);
-
 	/* file의 length 알아오기 */
 	off_t read_bytes;
-  	read_bytes = file_length(file);
-  	if(read_bytes == 0) return -1;
-
-  	/* address 검사 */
-  	if (!is_user_vaddr(addr) || addr < USER_VADDR_BOTTOM || ((uint32_t) addr % PGSIZE) != 0) return -1;
-
-  	off_t offset = 0;
-  	struct page *mmap_page;
-  	int mapid;
-  	frame_acquire ();
-  	struct thread *t = thread_current();
-  	mapid = t->mapid++;
-  	while (read_bytes > 0)
-    {
-    	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
-    	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
-    	mmap_page = page_create(file, offset, addr, page_read_bytes, page_zero_bytes, true);
-    	if(!mmap_page)
-    	{
-    		frame_release();
-    		system_munmap(t->mapid);
-    		return -1;
-    	}
-
-    	mmap_page->mmaped = true;
-    	mmap_page->mapid = mapid;
-    	ptable_insert(mmap_page);
-    	list_push_back (&t->mmap_list, &mmap_page->list_elem);
-
-    	read_bytes -= page_read_bytes;
-    	offset += page_read_bytes;
-    	addr += PGSIZE;
-
-    }
-
-    frame_release ();
+	read_bytes = file_length(file);
+	if(read_bytes == 0) return -1;
+	/* address 검사 */
+	if (!is_user_vaddr(addr) || addr < USER_VADDR_BOTTOM || ((uint32_t) addr % PGSIZE) != 0) return -1;
+	off_t offset = 0;
+	struct page *mmap_page;
+	int mapid;
+	frame_acquire ();
+	struct thread *curr = thread_current();
+	mapid = curr->mapid++;
+	while (read_bytes > 0)
+  {
+  	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
+  	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
+  	mmap_page = page_create(file, offset, addr, page_read_bytes, page_zero_bytes, true);
+  	if(!mmap_page || ptable_lookup(addr))
+  	{
+  		frame_release();
+  		system_munmap(curr->mapid);
+  		return -1;
+  	}
+  	mmap_page->mmaped = true;
+  	mmap_page->mapid = mapid;
+  	ptable_insert(mmap_page);
+  	list_push_back (&curr->mmap_list, &mmap_page->list_elem);
+  	read_bytes -= page_read_bytes;
+  	offset += page_read_bytes;
+  	addr += PGSIZE;
+  }
+  frame_release ();
 	return mapid;
 
 }
@@ -471,79 +464,70 @@ system_mmap (int fd, void *addr)
 static void
 system_munmap (int mapid)
 {
-	struct thread *t = thread_current();
+	struct thread *curr = thread_current();
 	struct list_elem *e;
-  	struct page *page;
-  	void *kpage;
-  	struct file *file = NULL;
-  	struct list_elem *next;
-  	//frame_acquire();
-  	if(list_empty(&t->mmap_list))
-  	{
-  		//frame_release();
-  		return;
-  	}
-
-  	int closed = 0;
-  	e = list_begin(&t->mmap_list);
-  	while(e != list_end(&t->mmap_list))
-  	{
-  		next = list_next(e);
-  		page = list_entry(e, struct page, list_elem);
-  		if(page->mapid == mapid)
-  		{
-  			list_remove(&page->list_elem);
-  			kpage = pagedir_get_page(t->pagedir, page->upage);
-
-  			if(!kpage)
-  			{
-  				hash_delete(&t->page_table, &page->hash_elem);
-  			}
-
-  			if(page->loaded == true)
-  			{
-  				if (pagedir_is_dirty(t->pagedir, page->upage))
-				{
-		  			filesys_acquire();
-		  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-		  			filesys_release();
-				}
-
-				frame_free(kpage);
-	      		pagedir_clear_page(t->pagedir, page->upage);
-
-  			}
-
-  			if(page->mapid != closed)
-  			{
-  				if(file)
-  				{
-  					filesys_acquire();
-  					file_close(file);
-  					filesys_release();
-  				}
-  				closed = page->mapid;
-  				file = page->file;
-
-  			}
-
-  			free(page);
-
-  		}
-  		e = next;
-
-  	}
-
-  	if(file)
+	struct page *page;
+	void *kpage;
+	struct file *file = NULL;
+	struct list_elem *next;
+	if(list_empty(&curr->mmap_list))
 	{
-		filesys_acquire();
-		file_close(file);
-		filesys_release();
+		return;
 	}
 
-  	//frame_release();
+	int closed = 0;
+	e = list_begin(&curr->mmap_list);
+	while(e != list_end(&curr->mmap_list))
+	{
+		next = list_next(e);
+		page = list_entry(e, struct page, list_elem);
+		if(page->mapid < mapid)
+    {
+      e = next;
+      continue;
+    }
+	  else if(page->mapid > mapid)
+	    break;
+		else
+		{
+			list_remove(&page->list_elem);
+			kpage = pagedir_get_page(curr->pagedir, page->upage);
+			if(!kpage)
+			{
+				hash_delete(&curr->page_table, &page->hash_elem);
+			}
+			if(page->loaded == true)
+			{
+				if (pagedir_is_dirty(curr->pagedir, page->upage))
+				{
+	  			filesys_acquire();
+	  			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+	  			filesys_release();
+				}
+      	pagedir_clear_page(curr->pagedir, page->upage);
+			}
+			if(page->mapid != closed)
+			{
+				if(file)
+				{
+					filesys_acquire();
+					file_close(file);
+					filesys_release();
+				}
+				closed = page->mapid;
+				file = page->file;
+			}
+			free(page);
+		}
+		e = next;
+	}
+	if(file)
+	{
+	filesys_acquire();
+	file_close(file);
+	filesys_release();
+	}
 	return;
-
 }
 
 

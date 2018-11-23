@@ -149,7 +149,6 @@ frame_free(void *frame)
 #ifdef DEBUG
 	printf("frame_free(): frame acquire 진입\n");
 #endif	
-	frame_acquire();
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		struct frame *tmp_frame = list_entry(e, struct frame, elem);
@@ -161,5 +160,4 @@ frame_free(void *frame)
 			break;
 		}
 	}
-	frame_release();
 }

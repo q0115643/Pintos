@@ -132,9 +132,9 @@ page_load_file(struct page *page)
 		printf("page_load_file(): file_read_at()이 실패 -> return false******\\n");
 #endif
 			filesys_release();
-			//frame_acquire();
+			frame_acquire();
 			frame_free(kpage);
-			//frame_release();
+			frame_release();
 			return false;
 		}
 		filesys_release();
@@ -146,9 +146,9 @@ page_load_file(struct page *page)
 #ifdef DEBUG
 		printf("page_load_file(): install_page()이 실패 -> return false******\\n");
 #endif
-		filesys_acquire();
+		frame_acquire();
 		frame_free(kpage);
-		filesys_release();
+		frame_release();
 		return false;
 	}
 
@@ -165,25 +165,26 @@ bool
 page_load_zero (struct page *page)
 {
   struct thread *t = thread_current();
+  frame_acquire();
   void *kpage = frame_alloc(PAL_ZERO);
+  frame_release();
   bool success;
-
   ASSERT (!page->loaded);
-
   if (kpage == NULL) return false;
+  frame_acquire();
   struct frame *frame = frame_get_from_addr(kpage);
   frame->alloc_page = page;
-
+  frame_release();
   success = (pagedir_get_page (t->pagedir, page->upage) == NULL && pagedir_set_page (t->pagedir, page->upage, kpage, true));
   if (!success)
   {
+  	frame_acquire();
   	frame_free (kpage);
+  	frame_release();
   	return false;
   }
-
   pagedir_set_accessed (t->pagedir, page->upage, true);
   return true;
-  
 }
 
 bool
@@ -227,7 +228,9 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   if (kpage != NULL)
   {
       pagedir_clear_page(cur->pagedir, page->upage);
+      frame_acquire();
       frame_free(kpage);
+      frame_release();
   }
   free(page);
 }
