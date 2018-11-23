@@ -450,6 +450,7 @@ system_mmap (int fd, void *addr)
 {
 	/* thread에서  fd 이용하여 file 가져오기 */
 	struct file *f;
+	struct page *page;
 	f = get_file_from_fd(fd);
 	if(!f) return -1;
 	struct file *file = file_reopen(f);
@@ -471,8 +472,15 @@ system_mmap (int fd, void *addr)
   	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
   	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes, mapid))
   	{
+	    curr->mapid--;
+			while (offset > 0)
+			{
+			  offset -= PGSIZE;
+			  page = list_entry (list_pop_back (&curr->mmap_list), struct page, list_elem);
+			  hash_delete(&curr->page_table, &page->hash_elem);
+			  free (page);
+			}
   		frame_release();
-  		system_munmap(curr->mapid);
   		return -1;
   	}
   	read_bytes -= page_read_bytes;

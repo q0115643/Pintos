@@ -686,9 +686,6 @@ static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
-#ifdef DEBUG
-  printf("load_segment(): 진입\n");
-#endif
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
@@ -702,7 +699,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-#ifdef VM
       struct page *page;
       frame_acquire();
       if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)) == NULL)
@@ -716,34 +712,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         return false;
       }
       frame_release();
-#else
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-#endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
-#ifdef VM
       ofs += PGSIZE;
-#endif
     }
   return true;
 }
@@ -753,24 +726,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-#ifdef DEBUG
-  printf("setup_stack(): 진입\n");
-#endif
+
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   bool success = false;
-#ifdef VM
   frame_acquire();
   kpage = frame_alloc(PAL_USER | PAL_ZERO);
-#else
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-#endif
   if (kpage != NULL) 
     {
       success = install_page (upage, kpage, true); // The first stack page need not be allocated lazily.
       if (success)
       {
-#ifdef VM
         struct page *page = malloc(sizeof(struct page));
         page->upage = upage;
         page->writable = true;
@@ -782,23 +748,15 @@ setup_stack (void **esp)
         frame->alloc_page = page;
         if(!ptable_insert(page))
         {
-#ifdef DEBUG
-          printf("setup_stack(): ptable_insert() 실패 -> return false******\\n");
-#endif
           success = false;
         }
         frame_release();
-#endif
         *esp = PHYS_BASE;
       }
       else
       {
-#ifdef VM
         frame_free(kpage);
         frame_release();
-#else
-        palloc_free_page (kpage);
-#endif
       }
     }
   return success;
