@@ -207,3 +207,71 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   free(page);
 }
 
+bool
+page_load(bool success, struct page *page)
+{
+  if(!page->loaded)
+  {
+    if(page->swaped)
+    {
+      success = page_load_swap(page);
+    }
+    else
+    {
+      if(page->file)
+      {
+        success = page_load_file(page);
+      }
+      else
+      {
+        success = page_load_zero(page);
+      }
+    }
+  }
+  return success;
+}
+
+bool
+stack_growth(bool success, void* fault_addr)
+{
+	uint8_t *stack_page_addr = pg_round_down(fault_addr);
+	if(stack_page_addr < PHYS_BASE - STACK_LIMIT)
+		return false;
+  if(stack_page_addr >= ((uint8_t *) PHYS_BASE) - PGSIZE)
+  	return false;
+  struct page *s_page = malloc(sizeof(struct page));
+  s_page->upage = stack_page_addr;
+  s_page->writable = true;
+  s_page->loaded = true;
+  s_page->file = NULL;
+  s_page->swaped = false;
+  s_page->mapid = -1;
+  s_page->busy = true;
+  uint8_t *tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
+  if (!tmp_kpage)
+  {
+    free(s_page);
+    return false;
+  }
+  success = install_page(stack_page_addr, tmp_kpage, true);
+  if(!success)
+  {
+    free(s_page);
+    frame_free(tmp_kpage);
+    return success;
+  }
+  frame_acquire();
+  struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
+  tmp_frame->alloc_page = s_page;
+  frame_release();
+  success = ptable_insert(s_page);
+  if(!success)
+  {
+    frame_free(tmp_kpage);
+    free(s_page);
+    return success;
+  }
+  if(intr_context()) // syscall에서 불릴때는 true유지
+  	s_page->busy = false;
+  return success;
+}

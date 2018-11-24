@@ -7,8 +7,6 @@
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
 
-#define STACK_LIMIT 8 * 1024 * 1024
-
 #ifdef VM
 #include "vm/frame.h"
 #include "vm/page.h"
@@ -122,82 +120,6 @@ kill (struct intr_frame *f)
     }
 }
 
-
-bool
-page_load(bool success, struct page *page)
-{
-  if(!page->loaded)
-  {
-    if(page->swaped)
-    {
-      success = page_load_swap(page);
-    }
-    else
-    {
-      if(page->file)
-      {
-        success = page_load_file(page);
-      }
-      else
-      {
-        success = page_load_zero(page);
-      }
-    }
-  }
-  return success;
-}
-
-bool
-stack_growth(bool success, void* fault_addr)
-{
-  uint8_t *stack_page_addr = pg_round_down(fault_addr);
-  while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
-  {
-    if(ptable_lookup(stack_page_addr))
-    {
-      stack_page_addr += PGSIZE;
-      continue;
-    }
-    struct page *s_page = malloc(sizeof(struct page));
-    s_page->upage = stack_page_addr;
-    s_page->writable = true;
-    s_page->loaded = true;
-    s_page->file = NULL;
-    s_page->swaped = false;
-    s_page->mapid = -1;
-    s_page->busy = true;
-    uint8_t *tmp_kpage;
-    tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO);
-    if (!tmp_kpage)
-    {
-      frame_free(tmp_kpage);
-      free(s_page);
-      return false;
-    }
-    success = install_page(stack_page_addr, tmp_kpage, true);
-    if(!success)
-    {
-      frame_free(tmp_kpage);
-      free(s_page);
-      return success;
-    }
-    frame_acquire();
-    struct frame *tmp_frame = frame_get_from_addr(tmp_kpage);
-    tmp_frame->alloc_page = s_page;
-    frame_release();
-    success = ptable_insert(s_page);
-    if(!success)
-    {
-      frame_free(tmp_kpage);
-      free(s_page);
-      return success;
-    }
-    s_page->busy = false;
-    stack_page_addr += PGSIZE;
-  }
-  return success;
-}
-
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -241,7 +163,7 @@ page_fault (struct intr_frame *f)
   /*
    *  user 주소에서 fault, page가 없음.
    */
-  if(is_user_vaddr(fault_addr) && not_present)
+  if(is_user_vaddr(fault_addr) && not_present && fault_addr > USER_VADDR_BOTTOM)
   {
     struct page *page = ptable_lookup(fault_addr);
     if(page)
@@ -255,8 +177,8 @@ page_fault (struct intr_frame *f)
     else
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
       bring_esp_from_thread_struct(user, not_present, f);
-      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
-      { // PUSHA signal이 permission 받으러온거임.
+      if(fault_addr >= f->esp - 32)
+      {
         success = stack_growth(success, fault_addr);
         if(success)
           return;

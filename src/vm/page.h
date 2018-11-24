@@ -10,6 +10,8 @@
 #include "filesys/file.h"
 #include "filesys/off_t.h"
 
+#define STACK_LIMIT 8 * 1024 * 1024
+
 struct page
 {
 	void *upage;	/* Virtual address */
@@ -37,4 +39,7 @@ bool page_load_file(struct page *page);
 bool page_load_zero (struct page *page);
 bool page_laod_swap (struct page *page);
 void ptable_clear(void);
+bool page_load(bool success, struct page *page);
+bool stack_growth(bool success, void* fault_addr);
+
 #endif /* vm/page.h */

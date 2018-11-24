@@ -55,16 +55,73 @@ filesys_release(void)
 	lock_release(&file_lock);
 }
 
+
+static struct page*
+check_addr_valid(const void *addr, void *esp)
+{
+	if(!is_user_vaddr(addr)) system_exit(-1);
+	struct page *page = ptable_lookup(addr);
+	bool success = false;
+	if(page)
+	{
+    page->busy = true;
+    success = page_load(success, page);
+    success = page->loaded;
+	}
+	else
+	{
+    if(addr >= esp - 32)
+    {
+      success = stack_growth(success, addr);
+      // 여기서 새로 만든 페이지 busy true로 유지
+    }
+	}
+	if(!success)
+		system_exit(-1);
+	return page;
+}
+
 static inline void
 get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
 {
+	void* base_esp = esp;
 	while(argc--)
 	{
-		if(!is_user_vaddr((void *)esp)) system_exit(-1);
+		check_addr_valid(esp, base_esp);
   	*(args++) = *(++esp);
 	}
-	if(!is_user_vaddr((void *)esp)) system_exit(-1);
+	check_addr_valid(esp, base_esp);
 }
+
+
+void check_string_valid (const void* str, void* esp)
+{
+  check_addr_valid(str, esp);
+  while (* (char *) str != 0)
+    {
+      str = (char *) str + 1;
+      check_addr_valid(str, esp);
+    }
+}
+
+void check_buffer_valid (void* buffer, unsigned size, void* esp, bool to_write)
+{
+  unsigned i;
+  char* local_buffer = (char *) buffer;
+  for (i = 0; i < size; i++)
+  {
+    struct page *page = check_addr_valid((const void*)local_buffer, esp);
+    if(page && to_write)
+		{
+	  	if(!page->writable)
+	    {
+	      system_exit(-1);
+	    }
+		}
+    local_buffer++;
+  }
+}
+
 
 void
 syscall_init (void) 
@@ -78,7 +135,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   int32_t args[3];
   unsigned int argc;
-  if(!is_user_vaddr(f->esp)) system_exit(-1);
+  check_addr_valid((const void*) f->esp, f->esp);
   thread_current()->esp = f->esp;
   switch(*(int*)f->esp)
   {
@@ -98,6 +155,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 1;
   		get_arguments(f->esp, args, argc);
+  		check_string_valid((const void*) args[0], f->esp);
   		f->eax = system_exec((const char *)args[0]);
   		unbusy_string((void *)args[0]);
   		break;
@@ -113,6 +171,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 2;
   		get_arguments(f->esp, args, argc);
+  		check_string_valid((const void*) args[0], f->esp);
   		f->eax = system_create((const char*)args[0], (unsigned)args[1]);
   		unbusy_string((void *)args[0]);
   		break;
@@ -121,6 +180,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 1;
   		get_arguments(f->esp, args, argc);
+  		check_string_valid((const void*) args[0], f->esp);
   		f->eax = system_remove((const char*)args[0]);
   		break;
   	}
@@ -128,6 +188,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 1;
   		get_arguments(f->esp, args, argc);
+  		check_string_valid((const void*) args[0], f->esp);
   		f->eax = system_open((const char*)args[0]);
   		unbusy_string((void *)args[0]);
   		break;
@@ -143,6 +204,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 3;
   		get_arguments(f->esp, args, argc);
+  		check_buffer_valid((void *) args[1], (unsigned) args[2], f->esp, true);
   		f->eax = system_read((int)args[0], (void*)args[1], (unsigned)args[2]);
   		unbusy_buffer((void*)args[1], (unsigned)args[2]);
   		break;
@@ -151,6 +213,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 3;
   		get_arguments(f->esp, args, argc);
+  		check_buffer_valid((void *) args[1], (unsigned) args[2], f->esp, false);
   		f->eax = system_write((int)args[0], (const void*)args[1], (unsigned)args[2]);
   		unbusy_buffer((void*)args[1], (unsigned)args[2]);
   		break;
@@ -265,9 +328,13 @@ system_filesize(int fd)
 {
 	int size;
 	struct file *file;
-	file = get_file_from_fd(fd);
-	if(file==NULL) system_exit(-1);
 	filesys_acquire();
+	file = get_file_from_fd(fd);
+	if(file==NULL)
+	{
+		filesys_release();
+		system_exit(-1);
+	}
 	size = file_length(file);
 	filesys_release();
 	return size;
@@ -295,13 +362,13 @@ system_read(int fd, void* buffer, unsigned size)
 		if(!is_user_vaddr(buffer+size)) system_exit(-1);
 		else
 		{
+			filesys_acquire();
 			file = get_file_from_fd(fd);
 			if(file)
 			{
-				filesys_acquire();
 				bytes = file_read(file, buffer, size);
-				filesys_release();
 			}
+			filesys_release();
 		}
 	}
 	return bytes;
@@ -323,14 +390,14 @@ system_write(int fd, const void* buffer, unsigned size)
 		if(!is_user_vaddr((void*)(buffer+size))) system_exit(-1);
 		else
 		{
+			filesys_acquire();
 			file = get_file_from_fd(fd);
 			if(file)
 			{
-				filesys_acquire();
 				result = file_write(file, buffer, size);
-				filesys_release();
 			}
 			else result = 0;
+			filesys_release();
 		}
 	}
 	return result;
@@ -341,13 +408,13 @@ system_seek(int fd, unsigned position)
 {
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
+	filesys_acquire();
 	file = get_file_from_fd(fd);
 	if(file)
 	{
-		filesys_acquire();
 		file_seek(file, position);
-		filesys_release();
 	}
+	filesys_release();
 }
 
 static unsigned
@@ -356,13 +423,13 @@ system_tell(int fd)
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	unsigned int tell = 0;
+	filesys_acquire();
 	file = get_file_from_fd(fd);
 	if(file)
 	{
-		filesys_acquire();
 		tell = file_tell(file);
-		filesys_release();
 	}
+	filesys_release();
 	return tell;
 }
 
@@ -371,14 +438,14 @@ system_close(int fd)
 {
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
+	filesys_acquire();
 	file = get_file_from_fd(fd);
 	if(file)
 	{
-		filesys_acquire();
 		file_close(file);
 		remove_file(fd);
-		filesys_release();
 	}
+	filesys_release();
 }
 
 bool 
@@ -417,7 +484,9 @@ system_mmap (int fd, void *addr)
 	/* thread에서  fd 이용하여 file 가져오기 */
 	struct file *f;
 	struct page *page;
+	filesys_acquire();
 	f = get_file_from_fd(fd);
+	filesys_release();
 	if(!f) return -1;
 	/* address 검사 */
 	if(!is_user_vaddr(addr) || addr < USER_VADDR_BOTTOM || ((uint32_t) addr % PGSIZE) != 0) return -1;
