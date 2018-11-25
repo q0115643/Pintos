@@ -42,7 +42,6 @@ swap_init(void)
 size_t
 swap_out(void *frame_addr)
 {
-	swap_init();
 	struct disk *disk_block = disk_get(1, 1);
 	size_t table_index;
 	swap_acquire();
