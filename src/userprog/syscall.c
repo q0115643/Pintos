@@ -79,6 +79,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+	printf("syscall 불림\n");
   int32_t args[3];
   unsigned int argc;
   check_addr_valid((const void*) f->esp);
@@ -311,6 +312,7 @@ system_read(int fd, void* buffer, unsigned size)
 static int
 system_write(int fd, const void* buffer, unsigned size)
 {
+	printf("system_write 진입\n");
 	struct file *file;
 	int result = -1;
 	if(fd==STDOUT_FILENO)
@@ -380,6 +382,7 @@ system_close(int fd)
 bool 
 mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, int mapid)
 {
+	printf("mmap_page_create 진입\n");
   struct thread *curr = thread_current();
   struct page *page = malloc(sizeof(struct page));
   if (!page) return false;
@@ -395,10 +398,12 @@ mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_b
   page->busy = false;
   if(!ptable_insert(page)) 
   {
+  	printf("ptable에 안들어감\n");
   	free(page);
   	return false;
   }
   list_push_back(&curr->mmap_list, &page->list_elem);
+  printf("mmap page create 성공\n");
   return true;
 }
 
@@ -406,6 +411,7 @@ mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_b
 static int
 system_mmap (int fd, void *addr)
 {
+	printf("map 진입\n");
 	/* thread에서  fd 이용하여 file 가져오기 */
 	struct file *f;
 	struct page *page;
@@ -437,19 +443,23 @@ system_mmap (int fd, void *addr)
   	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
   	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes, mapid))
   	{
+  		printf("mmap page 생성 실패 -> unmap\n");
 	    system_munmap(mapid);
   		return -1;
   	}
   	read_bytes -= page_read_bytes;
     offset += page_read_bytes;
     addr += PGSIZE;
+    printf("다음\n");
 	}
-	return thread_current()->mapid;
+	printf("리턴 mapid\n");
+	return mapid;
 }
 
 static void
 system_munmap(int mapid)
 {
+	printf("unmap 진입\n");
 	struct thread *curr = thread_current();
 	struct list_elem *e;
 	struct list_elem *next;
@@ -457,10 +467,8 @@ system_munmap(int mapid)
 	struct file *file = NULL;
 	if(list_empty(&curr->mmap_list))
 		return;
-  int closed = 0;
-	e = list_front(&curr->mmap_list);
 	bool file_put = false;
-	while(e != list_end(&curr->mmap_list))
+	for(e=list_front(&curr->mmap_list);e!=list_end(&curr->mmap_list);)
 	{
 		next = list_next(e);
 		page = list_entry(e, struct page, list_elem);
@@ -483,16 +491,10 @@ system_munmap(int mapid)
       pagedir_clear_page(curr->pagedir, page->upage);
     }
 		hash_delete(&curr->page_table, &page->hash_elem);
-    if (page->mapid != closed)
+    if(!file_put)
     {
-      if(file)
-      {
-        filesys_acquire();
-        file_close(file);
-        filesys_release();
-      }
-      closed = page->mapid;
       file = page->file;
+      file_put = true;
     }
 		free(page);
 		e = next;
@@ -553,14 +555,40 @@ check_buffer_valid (void* buffer, unsigned size, bool to_write)
   for (i = 0; i < size; i++)
   {
     struct page *page = check_addr_valid((const void*)local_buffer);
-    if(page && to_write)
+    if(page && to_write && !page->writable)
 		{
-	  	if(!page->writable)
-	    {
-	      system_exit(-1);
-	    }
+	    system_exit(-1);
 		}
     local_buffer++;
+  }
+}
+
+static void
+unbusy_addr(void* addr)
+{
+  struct page *page = ptable_lookup(addr);
+  if(page) page->busy = false;
+}
+
+static void
+unbusy_string(void* addr)
+{
+	unbusy_addr(addr);
+	while(*(char*)addr!=0)
+	{
+		addr = (char*) addr + 1;
+		unbusy_addr(addr);
+	}
+}
+static void
+unbusy_buffer(void* addr, unsigned size)
+{
+  unsigned i;
+  char* tmp_addr = (char *) addr;
+  for (i = 0; i < size; i++)
+  {
+    unbusy_addr(tmp_addr);
+    tmp_addr++;
   }
 }
 
@@ -607,38 +635,6 @@ remove_file(int fd)
 		}
 	}
 }
-
-static void
-unbusy_addr(void* addr)
-{
-  struct page *page = ptable_lookup(addr);
-  if(page) page->busy = false;
-}
-
-static void
-unbusy_string(void* addr)
-{
-	unbusy_addr(addr);
-	while(*(char*)addr!=0)
-	{
-		addr = (char*) addr + 1;
-		unbusy_addr(addr);
-	}
-}
-static void
-unbusy_buffer(void* addr, unsigned size)
-{
-  unsigned i;
-  char* tmp_addr = (char *) addr;
-  for (i = 0; i < size; i++)
-    {
-      unbusy_addr(tmp_addr);
-      tmp_addr++;
-    }
-}
-
-
-
 
 
 

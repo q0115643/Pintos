@@ -94,7 +94,7 @@ swap_in(struct page *page, void *addr)
 	struct disk *disk_block = disk_get(1, 1);
 	swap_acquire();
 	struct swap *swap_elem = swap_get_from_index(page->swap_index);
-	if (swap_elem == NULL || swap_elem->is_empty == true)
+	if (!swap_elem || swap_elem->is_empty)
 	{
 		swap_release();
 		return;
@@ -107,4 +107,3 @@ swap_in(struct page *page, void *addr)
 	}
 	swap_release();
 }
-

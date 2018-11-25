@@ -237,10 +237,8 @@ mmap_clear()
   struct file *file = NULL;
   if(list_empty(&curr->mmap_list))
     return;
-  int closed = 0;
-  e = list_begin(&curr->mmap_list);
-  bool file_put = false;
-  while(e != list_end(&curr->mmap_list))
+  int prev_mapid = 0;
+  for(e=list_front(&curr->mmap_list);e!=list_end(&curr->mmap_list);)
   {
     next = list_next(e);
     page = list_entry(e, struct page, list_elem);
@@ -258,7 +256,7 @@ mmap_clear()
       pagedir_clear_page(curr->pagedir, page->upage);
     }
     hash_delete(&curr->page_table, &page->hash_elem);
-    if (page->mapid != closed)
+    if (page->mapid != prev_mapid)
     {
       if(file)
       {
@@ -266,7 +264,7 @@ mmap_clear()
         file_close(file);
         filesys_release();
       }
-      closed = page->mapid;
+      prev_mapid = page->mapid;
       file = page->file;
     }
     free(page);

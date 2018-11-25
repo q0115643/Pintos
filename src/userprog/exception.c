@@ -158,6 +158,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+  printf("page_fault?\n");
   /*
    *  user 주소에서 fault, page가 없음.
    */
@@ -166,6 +167,7 @@ page_fault (struct intr_frame *f)
     struct page *page = ptable_lookup(fault_addr);
     if(page)
     {
+      printf("page load해야함\n");
       page->busy = true;
       success = page_load(page);
       page->busy = false;
@@ -179,6 +181,7 @@ page_fault (struct intr_frame *f)
       bring_esp_from_thread_struct(user, not_present, f);
       if(fault_addr >= f->esp - 32)
       {
+        printf("stack growth해야함\n");
         success = stack_growth(fault_addr);
         if(success)
         {
