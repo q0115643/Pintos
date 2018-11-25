@@ -760,37 +760,34 @@ setup_stack (void **esp)
 
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
-  bool success = false;
-  kpage = frame_alloc(PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (upage, kpage, true); // The first stack page need not be allocated lazily.
-      if (success)
-      {
-        struct page *page = malloc(sizeof(struct page));
-        page->upage = upage;
-        page->writable = true;
-        page->loaded = true;
-        page->file = NULL;
-        page->swaped = false;
-        page->mapid = -1;
-        page->busy = false;
-        frame_acquire();
-        struct frame *frame = frame_get_from_addr(kpage);
-        frame->alloc_page = page;
-        frame_release();
-        if(!ptable_insert(page))
-        {
-          success = false;
-        }
-        *esp = PHYS_BASE;
-      }
-      else
-      {
-        frame_free(kpage);
-      }
-    }
-  return success;
+  struct page *page = malloc(sizeof(struct page));
+  page->upage = upage;
+  page->writable = true;
+  page->loaded = true;
+  page->file = NULL;
+  page->swaped = false;
+  page->mapid = -1;
+  page->busy = false;
+  kpage = frame_alloc(PAL_USER | PAL_ZERO, page);
+  if(!kpage)
+  {
+    free(page);
+    return false;
+  }
+  if(!install_page(upage, kpage, true))
+  {
+    frame_free(kpage);
+    free(page);
+    return false;
+  }
+  if(!ptable_insert(page))
+  {
+    frame_free(kpage);
+    free(page);
+    return false;
+  }
+  *esp = PHYS_BASE;
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

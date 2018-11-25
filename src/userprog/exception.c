@@ -20,9 +20,7 @@ static long long page_fault_cnt;
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
 /* Help functions. */
-void exit_if_user_access_in_kernel(void *fault_addr, bool user);
 void bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f);
-void write_on_nonwritable_page(void *fault_addr, bool not_present, bool write);
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -169,19 +167,23 @@ page_fault (struct intr_frame *f)
     if(page)
     {
       page->busy = true;
-      success = page_load(success, page);
+      success = page_load(page);
       page->busy = false;
       if(success)
+      {
         return;
+      }
     }
     else
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
       bring_esp_from_thread_struct(user, not_present, f);
       if(fault_addr >= f->esp - 32)
       {
-        success = stack_growth(success, fault_addr);
+        success = stack_growth(fault_addr);
         if(success)
+        {
           return;
+        }
       }
     }
   }
@@ -201,14 +203,6 @@ page_fault (struct intr_frame *f)
 }
 
 /* Help functions. */
-void
-exit_if_user_access_in_kernel(void *fault_addr, bool user)
-{
-  if(is_kernel_vaddr(fault_addr) && user)
-  {
-    system_exit(-1);
-  }
-}
 
 void
 bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
@@ -218,17 +212,4 @@ bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
     f->esp = thread_current()->esp;
   }
 }
-
-void
-write_on_nonwritable_page(void *fault_addr, bool not_present, bool write)
-{
-  if(is_user_vaddr(fault_addr) && !not_present && write){
-    struct page *page = ptable_lookup(fault_addr);
-    if(!page->writable)
-    {
-      system_exit(-1);
-    }
-  }
-}
-
 

@@ -39,7 +39,7 @@ bool page_load_file(struct page *page);
 bool page_load_zero (struct page *page);
 bool page_laod_swap (struct page *page);
 void ptable_clear(void);
-bool page_load(bool success, struct page *page);
-bool stack_growth(bool success, void* fault_addr);
+bool page_load(struct page *page);
+bool stack_growth(void* fault_addr);
 
 #endif /* vm/page.h */

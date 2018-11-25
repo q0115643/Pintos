@@ -38,14 +38,14 @@ frame_release(void)
 
 /* frame table에 새로운 frame 넣기 */
 void
-frame_set_elem(void *frame)
+frame_set_elem(void *frame, struct page* page)
 {
 	/* page frame mapping table 구성 */
 	/* frame elem 구성 */
 	struct frame *new_frame = malloc(sizeof(struct frame));
 	new_frame->kpage = frame;
 	new_frame->frame_owner = thread_current();
-	new_frame->alloc_page = NULL;
+	new_frame->alloc_page = page;
 	/* frame table(list)에 넣어야 함 */
 	frame_acquire();
 	list_push_back(&frame_table, &new_frame->elem);
@@ -53,24 +53,10 @@ frame_set_elem(void *frame)
 	return;
 }
 
-/* find */
-struct frame *
-frame_get_from_addr(void *addr)
-{
-	struct list_elem *e;
-	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
-	{
-		if(list_entry(e, struct frame, elem)->kpage == addr)
-		{
-			return list_entry(e, struct frame, elem);
-		}
-	}
-	return NULL;
-}
-
 void *
 frame_victim(enum palloc_flags flags)
 {
+	frame_acquire();
 	struct frame *frame = NULL;
 	struct page *page;
 	struct thread *owner;
@@ -85,9 +71,7 @@ frame_victim(enum palloc_flags flags)
 		if(!page->busy)
 		{
 			if(pagedir_is_accessed(owner->pagedir, page->upage))
-			{
 				pagedir_set_accessed(owner->pagedir, page->upage, false);
-			} 
 			else
 			{	
 				if(pagedir_is_dirty(owner->pagedir, page->upage) || page->swaped)
@@ -120,14 +104,14 @@ frame_victim(enum palloc_flags flags)
 /* frame table 생성을 위함 */
 /* palloc_get_page --> frame_alloc으로 바꿔줘야 함 */
 void *
-frame_alloc(enum palloc_flags flags)
+frame_alloc(enum palloc_flags flags, struct page* page)
 {
 	void *frame = palloc_get_page(PAL_USER | flags);
 	/* page 할당 성공한 경우, */
 	if(frame != NULL)
 	{
 		/* page frame mapping table 구성 */
-		frame_set_elem(frame);
+		frame_set_elem(frame, page);
 		return frame;
 	}
 	else
@@ -135,11 +119,10 @@ frame_alloc(enum palloc_flags flags)
 		/* victim 선정 */
 		while(!frame)
 		{
-			frame_acquire();
 			frame = frame_victim(flags);
 			frame_release();
 		}
-		frame_set_elem(frame);
+		frame_set_elem(frame, page);
 		return frame;
 	}
 }
@@ -147,8 +130,8 @@ frame_alloc(enum palloc_flags flags)
 void
 frame_free(void *frame)
 {
-	struct list_elem *e;
 	frame_acquire();
+	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
 	{
 		struct frame *tmp_frame = list_entry(e, struct frame, elem);

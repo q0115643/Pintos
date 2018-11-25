@@ -17,9 +17,8 @@ struct frame {
 void frame_init(void);
 void frame_acquire(void);
 void frame_release(void);
-void frame_set_elem(void *frame);
-struct frame * frame_get_from_addr(void *addr);
-void *frame_alloc(enum palloc_flags flags);
+void frame_set_elem(void *frame, struct page* page);
+void *frame_alloc(enum palloc_flags flags, struct page* page);
 void *frame_victim(enum palloc_flags flags);
 void frame_delete_elem(void *frame);
 void frame_free(void *frame);

@@ -34,7 +34,9 @@ static int system_mmap (int fd, void *addr);
 static void system_munmap (int mapid);
 
 //#define DEBUG
-
+static struct page* check_addr_valid(const void *addr, void *esp);
+static void check_string_valid (const void* str, void* esp);
+static void check_buffer_valid (void* buffer, unsigned size, void* esp, bool to_write);
 static int add_thread_file_descriptor(struct file *file);
 static struct file * get_file_from_fd(int fd);
 static void remove_file(int fd);
@@ -55,32 +57,6 @@ filesys_release(void)
 	lock_release(&file_lock);
 }
 
-
-static struct page*
-check_addr_valid(const void *addr, void *esp)
-{
-	if(!is_user_vaddr(addr)) system_exit(-1);
-	struct page *page = ptable_lookup(addr);
-	bool success = false;
-	if(page)
-	{
-    page->busy = true;
-    success = page_load(success, page);
-    success = page->loaded;
-	}
-	else
-	{
-    if(addr >= esp - 32)
-    {
-      success = stack_growth(success, addr);
-      // 여기서 새로 만든 페이지 busy true로 유지
-    }
-	}
-	if(!success)
-		system_exit(-1);
-	return page;
-}
-
 static inline void
 get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
 {
@@ -92,36 +68,6 @@ get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
 	}
 	check_addr_valid(esp, base_esp);
 }
-
-
-void check_string_valid (const void* str, void* esp)
-{
-  check_addr_valid(str, esp);
-  while (* (char *) str != 0)
-    {
-      str = (char *) str + 1;
-      check_addr_valid(str, esp);
-    }
-}
-
-void check_buffer_valid (void* buffer, unsigned size, void* esp, bool to_write)
-{
-  unsigned i;
-  char* local_buffer = (char *) buffer;
-  for (i = 0; i < size; i++)
-  {
-    struct page *page = check_addr_valid((const void*)local_buffer, esp);
-    if(page && to_write)
-		{
-	  	if(!page->writable)
-	    {
-	      system_exit(-1);
-	    }
-		}
-    local_buffer++;
-  }
-}
-
 
 void
 syscall_init (void) 
@@ -490,13 +436,19 @@ system_mmap (int fd, void *addr)
 	if(!f) return -1;
 	/* address 검사 */
 	if(!is_user_vaddr(addr) || addr < USER_VADDR_BOTTOM || ((uint32_t) addr % PGSIZE) != 0) return -1;
+	filesys_acquire();
 	struct file *file = file_reopen(f);
+	filesys_release();
 	if(!file) return -1;
 	/* file의 length 알아오기 */
 	off_t read_bytes;
+	filesys_acquire();
 	read_bytes = file_length(f);
+	filesys_release();
 	if(read_bytes == 0) return -1;
+	filesys_acquire();
 	read_bytes = file_length(file);
+	filesys_release();
 	off_t offset = 0;
 	struct page *mmap_page;
 	int mapid = thread_current()->mapid++;
@@ -568,7 +520,63 @@ system_munmap(int mapid)
 	return;
 }
 
+
 /* help function */
+
+static struct page*
+check_addr_valid(const void *addr, void *esp)
+{
+	if(!is_user_vaddr(addr)) system_exit(-1);
+	struct page *page = ptable_lookup(addr);
+	bool success = false;
+	if(page)
+	{
+    page->busy = true;
+    success = page_load(success, page);
+    success = page->loaded;
+	}
+	else
+	{
+    if(addr >= esp - 32)
+    {
+      success = stack_growth(success, addr);
+      // 여기서 새로 만든 페이지 busy true로 유지
+    }
+	}
+	if(!success)
+		system_exit(-1);
+	return page;
+}
+
+static void
+check_string_valid (const void* str, void* esp)
+{
+  check_addr_valid(str, esp);
+  while (* (char *) str != 0)
+    {
+      str = (char *) str + 1;
+      check_addr_valid(str, esp);
+    }
+}
+ 
+static void
+check_buffer_valid (void* buffer, unsigned size, void* esp, bool to_write)
+{
+  unsigned i;
+  char* local_buffer = (char *) buffer;
+  for (i = 0; i < size; i++)
+  {
+    struct page *page = check_addr_valid((const void*)local_buffer, esp);
+    if(page && to_write)
+		{
+	  	if(!page->writable)
+	    {
+	      system_exit(-1);
+	    }
+		}
+    local_buffer++;
+  }
+}
 
 static int
 add_thread_file_descriptor(struct file *file)
