@@ -178,7 +178,7 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   struct page *page;
   void *kpage;
   page = hash_entry(e, struct page, hash_elem);
-  page->busy = true;
+  //page->busy = true; 쫓아내도 됨...
   kpage = pagedir_get_page(cur->pagedir, page->upage);
   if(kpage != NULL)
   	frame_free(kpage);
@@ -233,7 +233,7 @@ stack_growth(void* fault_addr)
     free(s_page);
     return false;
   }
-  if(intr_context()) // syscall에서 불릴때는 true유지
+  if(intr_context()) // exception에서 올 때는 false, syscall에서 불릴때는 true유지
   	s_page->busy = false;
   return true;
 }

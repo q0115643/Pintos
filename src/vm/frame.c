@@ -108,7 +108,7 @@ frame_alloc(enum palloc_flags flags, struct page* page)
 {
 	void *frame = palloc_get_page(PAL_USER | flags);
 	/* page 할당 성공한 경우, */
-	if(frame != NULL)
+	if(frame)
 	{
 		/* page frame mapping table 구성 */
 		frame_set_elem(frame, page);

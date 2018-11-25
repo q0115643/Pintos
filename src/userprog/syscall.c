@@ -34,9 +34,9 @@ static int system_mmap (int fd, void *addr);
 static void system_munmap (int mapid);
 
 //#define DEBUG
-static struct page* check_addr_valid(const void *addr, void *esp);
-static void check_string_valid (const void* str, void* esp);
-static void check_buffer_valid (void* buffer, unsigned size, void* esp, bool to_write);
+static struct page* check_addr_valid(const void *addr);
+static void check_string_valid (const void* str);
+static void check_buffer_valid (void* buffer, unsigned size, bool to_write);
 static int add_thread_file_descriptor(struct file *file);
 static struct file * get_file_from_fd(int fd);
 static void remove_file(int fd);
@@ -63,10 +63,10 @@ get_arguments(int32_t* esp, int32_t* args, unsigned int argc)
 	void* base_esp = esp;
 	while(argc--)
 	{
-		check_addr_valid(esp, base_esp);
+		check_addr_valid(esp);
   	*(args++) = *(++esp);
 	}
-	check_addr_valid(esp, base_esp);
+	check_addr_valid(esp);
 }
 
 void
@@ -81,7 +81,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   int32_t args[3];
   unsigned int argc;
-  check_addr_valid((const void*) f->esp, f->esp);
+  check_addr_valid((const void*) f->esp);
   thread_current()->esp = f->esp;
   switch(*(int*)f->esp)
   {
@@ -101,7 +101,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 1;
   		get_arguments(f->esp, args, argc);
-  		check_string_valid((const void*) args[0], f->esp);
+  		check_string_valid((const void*) args[0]);
   		f->eax = system_exec((const char *)args[0]);
   		unbusy_string((void *)args[0]);
   		break;
@@ -117,7 +117,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 2;
   		get_arguments(f->esp, args, argc);
-  		check_string_valid((const void*) args[0], f->esp);
+  		check_string_valid((const void*) args[0]);
   		f->eax = system_create((const char*)args[0], (unsigned)args[1]);
   		unbusy_string((void *)args[0]);
   		break;
@@ -126,7 +126,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 1;
   		get_arguments(f->esp, args, argc);
-  		check_string_valid((const void*) args[0], f->esp);
+  		check_string_valid((const void*) args[0]);
   		f->eax = system_remove((const char*)args[0]);
   		break;
   	}
@@ -134,7 +134,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 1;
   		get_arguments(f->esp, args, argc);
-  		check_string_valid((const void*) args[0], f->esp);
+  		check_string_valid((const void*) args[0]);
   		f->eax = system_open((const char*)args[0]);
   		unbusy_string((void *)args[0]);
   		break;
@@ -150,7 +150,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 3;
   		get_arguments(f->esp, args, argc);
-  		check_buffer_valid((void *) args[1], (unsigned) args[2], f->esp, true);
+  		check_buffer_valid((void *) args[1], (unsigned) args[2], true);
   		f->eax = system_read((int)args[0], (void*)args[1], (unsigned)args[2]);
   		unbusy_buffer((void*)args[1], (unsigned)args[2]);
   		break;
@@ -159,7 +159,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   	{
   		argc = 3;
   		get_arguments(f->esp, args, argc);
-  		check_buffer_valid((void *) args[1], (unsigned) args[2], f->esp, false);
+  		check_buffer_valid((void *) args[1], (unsigned) args[2], false);
   		f->eax = system_write((int)args[0], (const void*)args[1], (unsigned)args[2]);
   		unbusy_buffer((void*)args[1], (unsigned)args[2]);
   		break;
@@ -200,7 +200,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   		break;
   	}
   }
-  unbusy_addr(f->esp);
+  unbusy_addr(thread_current()->esp);
 }
 
 static void
@@ -220,7 +220,6 @@ void system_exit(int status)
 static pid_t
 system_exec(const char* cmd_line)
 {
-	if(!is_user_vaddr((void*)cmd_line)) system_exit(-1);
 	pid_t pid;
 	struct thread* t = thread_current();
 	pid = process_execute(cmd_line);
@@ -237,8 +236,6 @@ system_wait(pid_t pid)
 static bool
 system_create(const char* file, unsigned initial_size)
 {
-	if(file==NULL || !is_user_vaddr((void *)file))
-		system_exit(-1);
 	filesys_acquire();
 	bool result = filesys_create(file, initial_size);
 	filesys_release();
@@ -248,8 +245,6 @@ system_create(const char* file, unsigned initial_size)
 static bool
 system_remove(const char* file)
 {
-	if(file==NULL || !is_user_vaddr((void *)file))
-		system_exit(-1);
 	filesys_acquire();
 	bool result = filesys_remove(file);
 	filesys_release();
@@ -260,8 +255,6 @@ static int
 system_open(const char* file)
 {	
 	int fd = -1;
-	if(file==NULL || !is_user_vaddr((void *)file))
-		system_exit(-1);
 	filesys_acquire();
 	struct file *f = filesys_open(file);
 	if(f) fd = add_thread_file_descriptor(f);
@@ -292,8 +285,7 @@ system_read(int fd, void* buffer, unsigned size)
 	struct file *file;
 	unsigned i;
 	int bytes = -1;
-	if((void*)buffer==NULL || (void *)(buffer+size)==NULL || !is_user_vaddr(buffer))
-		system_exit(-1);
+
 	if(fd==STDIN_FILENO)
 	{
 		for(i=0; i<size; i++)
@@ -305,17 +297,13 @@ system_read(int fd, void* buffer, unsigned size)
 	}
 	else
 	{
-		if(!is_user_vaddr(buffer+size)) system_exit(-1);
-		else
+		filesys_acquire();
+		file = get_file_from_fd(fd);
+		if(file)
 		{
-			filesys_acquire();
-			file = get_file_from_fd(fd);
-			if(file)
-			{
-				bytes = file_read(file, buffer, size);
-			}
-			filesys_release();
+			bytes = file_read(file, buffer, size);
 		}
+		filesys_release();
 	}
 	return bytes;
 }
@@ -325,7 +313,6 @@ system_write(int fd, const void* buffer, unsigned size)
 {
 	struct file *file;
 	int result = -1;
-	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer)) system_exit(-1);
 	if(fd==STDOUT_FILENO)
 	{
 		putbuf(buffer, size);
@@ -333,18 +320,14 @@ system_write(int fd, const void* buffer, unsigned size)
 	}
 	else
 	{
-		if(!is_user_vaddr((void*)(buffer+size))) system_exit(-1);
-		else
+		filesys_acquire();
+		file = get_file_from_fd(fd);
+		if(file)
 		{
-			filesys_acquire();
-			file = get_file_from_fd(fd);
-			if(file)
-			{
-				result = file_write(file, buffer, size);
-			}
-			else result = 0;
-			filesys_release();
+			result = file_write(file, buffer, size);
 		}
+		else result = 0;
+		filesys_release();
 	}
 	return result;
 }
@@ -400,7 +383,6 @@ mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_b
   struct thread *curr = thread_current();
   struct page *page = malloc(sizeof(struct page));
   if (!page) return false;
-
   page->file = file;
   page->offset = ofs;
   page->upage = upage;
@@ -411,16 +393,13 @@ mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_b
   page->writable = true;
   page->mapid = mapid;
   page->busy = false;
-
   if(!ptable_insert(page)) 
   {
   	free(page);
   	return false;
   }
-
-  list_push_back (&curr->mmap_list, &page->list_elem);
+  list_push_back(&curr->mmap_list, &page->list_elem);
   return true;
-
 }
 
 
@@ -454,7 +433,7 @@ system_mmap (int fd, void *addr)
 	int mapid = thread_current()->mapid++;
 	while (read_bytes > 0)
 	{
-  	uint32_t page_read_bytes = (read_bytes < PGSIZE ? read_bytes : PGSIZE);
+  	uint32_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
   	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
   	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes, mapid))
   	{
@@ -524,7 +503,7 @@ system_munmap(int mapid)
 /* help function */
 
 static struct page*
-check_addr_valid(const void *addr, void *esp)
+check_addr_valid(const void *addr)
 {
 	if(!is_user_vaddr(addr)) system_exit(-1);
 	struct page *page = ptable_lookup(addr);
@@ -532,15 +511,15 @@ check_addr_valid(const void *addr, void *esp)
 	if(page)
 	{
     page->busy = true;
-    success = page_load(success, page);
+    success = page_load(page);
     success = page->loaded;
 	}
 	else
 	{
-    if(addr >= esp - 32)
+    if(addr >= thread_current()->esp - 32)
     {
-      success = stack_growth(success, addr);
-      // 여기서 새로 만든 페이지 busy true로 유지
+      success = stack_growth(addr);
+      // 여기서 새로 만든 페이지 busy true로 유지됨
     }
 	}
 	if(!success)
@@ -549,24 +528,24 @@ check_addr_valid(const void *addr, void *esp)
 }
 
 static void
-check_string_valid (const void* str, void* esp)
+check_string_valid (const void* str)
 {
-  check_addr_valid(str, esp);
+  check_addr_valid(str);
   while (* (char *) str != 0)
     {
       str = (char *) str + 1;
-      check_addr_valid(str, esp);
+      check_addr_valid(str);
     }
 }
  
 static void
-check_buffer_valid (void* buffer, unsigned size, void* esp, bool to_write)
+check_buffer_valid (void* buffer, unsigned size, bool to_write)
 {
   unsigned i;
   char* local_buffer = (char *) buffer;
   for (i = 0; i < size; i++)
   {
-    struct page *page = check_addr_valid((const void*)local_buffer, esp);
+    struct page *page = check_addr_valid((const void*)local_buffer);
     if(page && to_write)
 		{
 	  	if(!page->writable)
@@ -596,8 +575,7 @@ get_file_from_fd(int fd)
 	struct thread_fd *t_fd;
 	struct list_elem *e;
 	if(fd<2 || fd>cur->fd_count) return NULL;
-	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list);
-			e=list_next(e))
+	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list); e=list_next(e))
 	{
 		t_fd = list_entry(e, struct thread_fd, elem);
 		if(t_fd->fd ==fd) return t_fd->file;
