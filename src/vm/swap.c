@@ -23,8 +23,6 @@ swap_release(void)
 void 
 swap_init(void)
 {
-	if (swap_init_check) return;
-	swap_init_check = true;
 	struct disk *disk = disk_get(1, 1);
 	list_init(&swap_table);
 	lock_init(&swap_table_lock);
@@ -77,13 +75,19 @@ swap_out(void *frame_addr)
 struct swap *
 swap_get_from_index(size_t swap_index)
 {
-	if(list_empty(&swap_table)) return NULL;
-	struct list_elem *e;
-	for(e = list_begin(&swap_table); e != list_end(&swap_table); e = list_next(e))
+	if(list_empty(&swap_table))
 	{
+		return NULL;
+	}
+	struct list_elem *e;
+	struct list_elem *next;
+	for(e = list_begin(&swap_table); e != list_end(&swap_table);)
+	{
+		next = list_next(e);
 		struct swap *tmp_swap = list_entry(e, struct swap, elem);
 		if(tmp_swap->table_index == swap_index)
 			return tmp_swap;
+		e = next;
 	}
 	return NULL;
 }

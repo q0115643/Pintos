@@ -93,7 +93,6 @@ ptable_lookup(void* addr)
 bool
 page_load_file(struct page *page)
 {
-	printf("file?\n");
 	struct thread *cur = thread_current();
 	enum palloc_flags flags = PAL_USER;
 	if (page->read_bytes == 0)
@@ -127,7 +126,6 @@ page_load_file(struct page *page)
 bool
 page_load_zero (struct page *page)
 {
-	printf("zero?\n");
   struct thread *t = thread_current();
   void *kpage = frame_alloc(PAL_ZERO, page);
   bool success;
@@ -146,7 +144,6 @@ page_load_zero (struct page *page)
 bool
 page_load_swap(struct page *page)
 {
-	printf("swap?\n");
 	struct thread *cur = thread_current();
 	void *kpage = frame_alloc(PAL_USER, page);
 	if(!kpage) return false;
@@ -155,14 +152,11 @@ page_load_swap(struct page *page)
 	  frame_free(kpage);
 	  return false;
 	}
-	printf("install page 성공?\n"); // ㅇㅋ
 	swap_in(page, kpage);
-	printf("swap in 성공?\n");
 	page->swaped = false;
 	page->loaded = true;
 	pagedir_set_dirty(cur->pagedir, page->upage, true);
   pagedir_set_accessed(cur->pagedir, page->upage, true);
-  printf("swap 성공?\n");
   return true;
 }
 
