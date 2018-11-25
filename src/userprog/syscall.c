@@ -454,7 +454,6 @@ system_munmap(int mapid)
 	struct list_elem *e;
 	struct list_elem *next;
 	struct page *page;
-	void *kpage;
 	struct file *file = NULL;
 	if(list_empty(&curr->mmap_list))
 		return;
@@ -472,14 +471,17 @@ system_munmap(int mapid)
     }
 	  page->busy = true;
 		list_remove(&page->list_elem);
-		if(pagedir_is_dirty(curr->pagedir, page->upage))
-		{
-			filesys_acquire();
-			file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-			filesys_release();
-		}
-		frame_free(pagedir_get_page(curr->pagedir, page->upage));
-		pagedir_clear_page(curr->pagedir, page->upage);
+		if(page->loaded)
+    {
+      if(pagedir_is_dirty(curr->pagedir, page->upage))
+      {
+        filesys_acquire();
+        file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+        filesys_release();
+      }
+      frame_free(pagedir_get_page(curr->pagedir, page->upage));
+      pagedir_clear_page(curr->pagedir, page->upage);
+    }
 		hash_delete(&curr->page_table, &page->hash_elem);
     if (page->mapid != closed)
     {
@@ -493,9 +495,14 @@ system_munmap(int mapid)
       file = page->file;
     }
 		free(page);
-		frame_free(kpage);
 		e = next;
 	}
+	if(file)
+  {
+    filesys_acquire();
+    file_close(file);
+    filesys_release();
+  }
 	return;
 }
 

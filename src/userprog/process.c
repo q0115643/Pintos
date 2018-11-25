@@ -228,70 +228,12 @@ process_wait (tid_t child_tid)
 }
 
 void
-process_remove_mmap(void)
-{
-    struct thread *t = thread_current();
-    struct list_elem *e;
-    struct page *page;
-    struct file *file = NULL;
-    int closed = 0;
-
-    for(e = list_begin(&t->mmap_list); e = list_end(&t->mmap_list); e = list_next(e))
-    {
-      list_remove(&page->list_elem);
-      struct page *page = list_entry (e, struct page, list_elem);
-
-      if(page->loaded)
-      {
-        if(pagedir_is_dirty(t->pagedir, page->upage))
-        {
-
-          filesys_acquire();
-          file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-          filesys_release();
-
-        }
-
-        frame_free(pagedir_get_page(t->pagedir,page->upage));
-        pagedir_clear_page(t->pagedir, page->upage);
-
-      }
-
-      if(page->mapid != closed)
-        {
-          if(file)
-          {
-            filesys_acquire();
-            file_close(file);
-            filesys_release();
-          }
-
-          closed = page->mapid;
-          file = page->file;
-
-        }
-
-      free(page);
-
-    }
-
-    if(file)
-    {
-      filesys_acquire();
-      file_close(file);
-      filesys_release();
-    }
-
-}
-
-void
 mmap_clear()
 {
   struct thread *curr = thread_current();
   struct list_elem *e;
   struct list_elem *next;
   struct page *page;
-  void *kpage;
   struct file *file = NULL;
   if(list_empty(&curr->mmap_list))
     return;
@@ -304,14 +246,17 @@ mmap_clear()
     page = list_entry(e, struct page, list_elem);
     page->busy = true;
     list_remove(&page->list_elem);
-    if(pagedir_is_dirty(curr->pagedir, page->upage))
+    if(page->loaded)
     {
-      filesys_acquire();
-      file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-      filesys_release();
+      if(pagedir_is_dirty(curr->pagedir, page->upage))
+      {
+        filesys_acquire();
+        file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+        filesys_release();
+      }
+      frame_free(pagedir_get_page(curr->pagedir, page->upage));
+      pagedir_clear_page(curr->pagedir, page->upage);
     }
-    frame_free(pagedir_get_page(curr->pagedir, page->upage));
-    pagedir_clear_page(curr->pagedir, page->upage);
     hash_delete(&curr->page_table, &page->hash_elem);
     if (page->mapid != closed)
     {
@@ -325,8 +270,13 @@ mmap_clear()
       file = page->file;
     }
     free(page);
-    frame_free(kpage);
     e = next;
+  }
+  if(file)
+  {
+    filesys_acquire();
+    file_close(file);
+    filesys_release();
   }
   return;
 }
