@@ -13,6 +13,7 @@
 #include "userprog/syscall.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
+#include "vm/page.h"
 #include "userprog/process.h"
 
 //#define DEBUG
@@ -124,7 +125,7 @@ page_load_file(struct page *page)
 }
 
 bool
-page_load_zero (struct page *page)
+page_load_zero(struct page *page)
 {
   struct thread *t = thread_current();
   void *kpage = frame_alloc(PAL_ZERO, page);
@@ -199,38 +200,42 @@ page_load(struct page *page)
 bool
 stack_growth(void* fault_addr)
 {
-	uint8_t *stack_page_addr = pg_round_down(fault_addr);
-	if(stack_page_addr < PHYS_BASE - STACK_LIMIT)
-		return false;
-  if(stack_page_addr >= ((uint8_t *) PHYS_BASE) - PGSIZE)
-  	return false;
-  struct page *s_page = malloc(sizeof(struct page));
-  s_page->upage = stack_page_addr;
-  s_page->writable = true;
-  s_page->loaded = true;
-  s_page->file = NULL;
-  s_page->swaped = false;
-  s_page->mapid = -1;
-  s_page->busy = true;
-  uint8_t *tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO, s_page);
-  if (!tmp_kpage)
+  uint8_t *stack_page_addr = pg_round_down(fault_addr);
+  while(stack_page_addr < ((uint8_t *) PHYS_BASE) - PGSIZE)
   {
-    free(s_page);
-    return false;
+    if(ptable_lookup(stack_page_addr))
+    {
+      stack_page_addr += PGSIZE;
+      continue;
+    }
+    struct page *s_page = malloc(sizeof(struct page));
+    s_page->upage = stack_page_addr;
+    s_page->writable = true;
+    s_page->loaded = true;
+    s_page->file = NULL;
+    s_page->swaped = false;
+    s_page->mapid = -1;
+    s_page->busy = true;
+    uint8_t *tmp_kpage = frame_alloc(PAL_USER | PAL_ZERO, s_page);
+    if (!tmp_kpage)
+    {
+      free(s_page);
+      return false;
+    }
+    if(!install_page(stack_page_addr, tmp_kpage, true))
+    {
+      frame_free(tmp_kpage);
+      free(s_page);
+      return false;
+    }
+    if(!ptable_insert(s_page))
+    {
+      frame_free(tmp_kpage);
+      free(s_page);
+      return false;
+    }
+    s_page->busy = false;
+    stack_page_addr += PGSIZE;
   }
-  if(!install_page(stack_page_addr, tmp_kpage, true))
-  {
-    frame_free(tmp_kpage);
-    free(s_page);
-    return false;
-  }
-  if(!ptable_insert(s_page))
-  {
-    frame_free(tmp_kpage);
-    free(s_page);
-    return false;
-  }
-  if(intr_context()) // exception에서 올 때는 false, syscall에서 불릴때는 true유지
-  	s_page->busy = false;
   return true;
 }

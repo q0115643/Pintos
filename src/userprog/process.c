@@ -35,6 +35,9 @@ void *realloc(void *ptr, size_t size);
 
 void close_all_files(void)
 {
+#ifdef DEBUG
+  printf("close_all_files(): 진입\n");
+#endif
   struct thread *cur = thread_current();
   struct list_elem *e;
   struct thread_fd *t_fd;
@@ -55,8 +58,12 @@ void close_all_files(void)
   file_close(cur->executable);
   filesys_release();
 }
+
 int wait_child(tid_t child_tid)
 {
+#ifdef DEBUG
+  printf("wait_child(): 진입\n");
+#endif
   struct thread *cur = thread_current();
   struct thread_child *child;
   struct list_elem *e;
@@ -77,6 +84,9 @@ int wait_child(tid_t child_tid)
 }
 void alert_parent(void)
 {
+#ifdef DEBUG
+  printf("alert_parent(): 진입\n");
+#endif
   struct thread *cur = thread_current ();
   struct list_elem *e;
   struct thread_child *child;
@@ -230,6 +240,9 @@ process_wait (tid_t child_tid)
 void
 mmap_clear()
 {
+#ifdef DEBUG
+  printf("mmap_clear(): 진입\n");
+#endif
   struct thread *curr = thread_current();
   struct list_elem *e;
   struct list_elem *next;
@@ -283,6 +296,9 @@ mmap_clear()
 void
 process_exit (void)
 {
+#ifdef DEBUG
+  printf("process_exit(): 진입\n");
+#endif
   struct thread *cur = thread_current ();
   uint32_t *pd;
   alert_parent();  // change parent->child_list의 child->exit true로.

@@ -27,12 +27,18 @@ frame_init(void)
 void
 frame_acquire(void)
 {
+#ifdef DEBUG
+	printf("frame_acquire\n");
+#endif
 	lock_acquire(&frame_lock);
 }
 
 void
 frame_release(void)
 {
+#ifdef DEBUG
+	printf("frame_release\n");
+#endif
 	lock_release(&frame_lock);
 }
 
@@ -40,6 +46,9 @@ frame_release(void)
 void
 frame_set_elem(void *frame, struct page* page)
 {
+#ifdef DEBUG
+	printf("frame_set_elem 진입\n");
+#endif
 	/* page frame mapping table 구성 */
 	/* frame elem 구성 */
 	struct frame *new_frame = malloc(sizeof(struct frame));
@@ -56,13 +65,49 @@ frame_set_elem(void *frame, struct page* page)
 void *
 frame_victim(enum palloc_flags flags)
 {
+#ifdef DEBUG
+	printf("frame_victim 진입\n");
+#endif
 	frame_acquire();
 	struct frame *frame = NULL;
 	struct page *page;
 	struct thread *owner;
-	/* Second chance algorithm. */
 	struct list_elem *e;
-	e = list_begin (&frame_table);
+	e = list_begin(&frame_table);
+// 	while(true)
+// 	{
+// 		frame = list_entry(e, struct frame, elem);
+// 		owner = frame->frame_owner;
+// 		page = frame->alloc_page;
+// 		if(!page->busy)
+// 		{
+// 			if(pagedir_is_dirty(owner->pagedir, page->upage) || page->swaped)
+// 			{
+// 				if (page->mapid != MAP_FAILED)
+// 				{
+// 					filesys_acquire ();
+// 					file_write_at(page->file, page->upage, page->read_bytes, page->offset);
+// 					filesys_release ();
+// 				}
+// 				else
+// 				{
+// 					page->swaped = true;
+// 					page->swap_index = swap_out(frame->kpage);
+// 				}
+// 			}
+// 			page->loaded = false;
+// 			list_remove(e);
+// 			pagedir_clear_page(owner->pagedir, page->upage);
+// 			palloc_free_page(frame->kpage);
+// 			free(frame);
+// #ifdef DEBUG
+// 			printf("frame_victim에서 누구 쫓아내고 return\n");
+// #endif
+// 			return palloc_get_page(PAL_USER | flags);
+// 		}
+// 		e = list_next(e);
+// 		if(e==list_end(&frame_table)) return NULL;
+// 	}
 	while(true)
 	{
 		frame = list_entry(e, struct frame, elem);
@@ -106,6 +151,9 @@ frame_victim(enum palloc_flags flags)
 void *
 frame_alloc(enum palloc_flags flags, struct page* page)
 {
+#ifdef DEBUG
+	printf("frame_alloc 진입\n");
+#endif
 	void *frame = palloc_get_page(PAL_USER | flags);
 	/* page 할당 성공한 경우, */
 	if(frame)
@@ -130,6 +178,9 @@ frame_alloc(enum palloc_flags flags, struct page* page)
 void
 frame_free(void *frame)
 {
+#ifdef DEBUG
+	printf("frame_free 진입\n");
+#endif
 	frame_acquire();
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))

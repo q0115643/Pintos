@@ -161,7 +161,10 @@ page_fault (struct intr_frame *f)
   /*
    *  user 주소에서 fault, page가 없음.
    */
-  if(is_user_vaddr(fault_addr) && not_present && fault_addr > USER_VADDR_BOTTOM)
+#ifdef DEBUG
+  printf("exception 진입\n");
+#endif
+  if(not_present)
   {
     struct page *page = ptable_lookup(fault_addr);
     if(page)
@@ -169,25 +172,19 @@ page_fault (struct intr_frame *f)
       page->busy = true;
       success = page_load(page);
       page->busy = false;
-      if(success)
-      {
-        return;
-      }
+      if(success) return;
     }
     else
     { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
       bring_esp_from_thread_struct(user, not_present, f);
-      if(fault_addr >= f->esp - 32)
-      {
+      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
+      { // PUSHA signal이 permission 받으러온거임.
         success = stack_growth(fault_addr);
-        if(success)
-        {
-          return;
-        }
+        if(success) return;
       }
     }
   }
-  system_exit(-1);
+  if(not_present || write || user) system_exit(-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
@@ -207,7 +204,7 @@ page_fault (struct intr_frame *f)
 void
 bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
 {
-  if(!user && not_present && f->esp <= PHYS_BASE - STACK_LIMIT)
+  if(!user && f->esp >= PHYS_BASE - STACK_LIMIT)
   { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
     f->esp = thread_current()->esp;
   }
