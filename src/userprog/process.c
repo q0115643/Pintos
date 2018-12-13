@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <user/syscall.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -20,11 +19,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#ifdef VM
-#include "vm/frame.h"
-#include "vm/page.h"
-#endif
-
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp, char** token_ptr);
 void free(void *ptr);
@@ -35,9 +29,6 @@ void *realloc(void *ptr, size_t size);
 
 void close_all_files(void)
 {
-#ifdef DEBUG
-  printf("close_all_files(): 진입\n");
-#endif
   struct thread *cur = thread_current();
   struct list_elem *e;
   struct thread_fd *t_fd;
@@ -58,12 +49,8 @@ void close_all_files(void)
   file_close(cur->executable);
   filesys_release();
 }
-
 int wait_child(tid_t child_tid)
 {
-#ifdef DEBUG
-  printf("wait_child(): 진입\n");
-#endif
   struct thread *cur = thread_current();
   struct thread_child *child;
   struct list_elem *e;
@@ -84,9 +71,6 @@ int wait_child(tid_t child_tid)
 }
 void alert_parent(void)
 {
-#ifdef DEBUG
-  printf("alert_parent(): 진입\n");
-#endif
   struct thread *cur = thread_current ();
   struct list_elem *e;
   struct thread_child *child;
@@ -163,18 +147,11 @@ process_execute (const char *cmdline)
 static void
 start_process (void *f_name)
 {
-#ifdef DEBUG
-  printf("start_process(): 진입\n");
-#endif
   char *file_name = (char *)f_name;
   char *token_ptr = NULL;
   struct intr_frame if_;
   bool success;
   struct thread *cur = thread_current();
-
-#ifdef VM
-  ptable_init(&cur->page_table);
-#endif
 
   file_name = strtok_r(file_name, " ", &token_ptr); //file_name 뽑기
 
@@ -193,18 +170,12 @@ start_process (void *f_name)
   palloc_free_page (file_name);
   if (!success)
   {
-#ifdef DEBUG
-    printf("start_process: load() 실패********\n");
-#endif
     cur->parent->child_status = LOAD_FAILED;
     sema_up(&cur->parent->load_sema);
     system_exit(-1);
   }
   else
   {
-#ifdef DEBUG
-    printf("start_process: load() 성공\n");
-#endif
     cur->parent->child_status = LOAD_DONE;
     sema_up(&cur->parent->load_sema);
   }
@@ -230,78 +201,18 @@ start_process (void *f_name)
 int
 process_wait (tid_t child_tid) 
 {
-#ifdef DEBUG
-  printf("process_wait(): 진입\n");
-#endif
   int status = wait_child(child_tid);
   return status;
-}
-
-void
-mmap_clear()
-{
-#ifdef DEBUG
-  printf("mmap_clear(): 진입\n");
-#endif
-  struct thread *curr = thread_current();
-  struct list_elem *e;
-  struct page *page;
-  struct file *file = NULL;
-  if(list_empty(&curr->mmap_list)) return;
-  int prev_mapid = 0;
-  for(e=list_front(&curr->mmap_list);e!=list_end(&curr->mmap_list);)
-  {
-    page = list_entry(e, struct page, list_elem);
-    e = list_next(e);
-    page->busy = true;
-    list_remove(&page->list_elem);
-    if(page->loaded)
-    {
-      if(pagedir_is_dirty(curr->pagedir, page->upage))
-      {
-        filesys_acquire();
-        file_write_at(page->file, page->upage, page->read_bytes, page->offset);
-        filesys_release();
-      }
-      frame_free(pagedir_get_page(curr->pagedir, page->upage));
-      pagedir_clear_page(curr->pagedir, page->upage);
-    }
-    hash_delete(&curr->page_table, &page->hash_elem);
-    if (page->mapid != prev_mapid)
-    {
-      if(file)
-      {
-        filesys_acquire();
-        file_close(file);
-        filesys_release();
-      }
-      prev_mapid = page->mapid;
-      file = page->file;
-    }
-    free(page);
-  }
-  if(file)
-  {
-    filesys_acquire();
-    file_close(file);
-    filesys_release();
-  }
-  return;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
-#ifdef DEBUG
-  printf("process_exit(): 진입\n");
-#endif
   struct thread *cur = thread_current ();
   uint32_t *pd;
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
-  mmap_clear();
-  ptable_clear();
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -413,9 +324,6 @@ static bool argument_setup(void **esp, const char *file_name, char **token_ptr);
 bool
 load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr) 
 {
-#ifdef DEBUG
-  printf("load(): 진입\n");
-#endif
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -502,12 +410,7 @@ load (const char *file_name, void (**eip) (void), void **esp, char **token_ptr)
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
-              {
-#ifdef DEBUG
-                printf("load(): load_segment() 확인 결과 false => goto done******\\n");
-#endif
                 goto done;
-              }
             }
           else
             goto done;
@@ -617,7 +520,7 @@ push_fake_return_addr_stack(void **esp)
 
 /* load() helpers. */
 
-bool install_page (void *upage, void *kpage, bool writable);
+static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -695,20 +598,30 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      struct page *page;
-      if((page=page_create(file, ofs, upage, page_read_bytes, writable)) == NULL)
-      {
+      /* Get a page of memory. */
+      uint8_t *kpage = palloc_get_page (PAL_USER);
+      if (kpage == NULL)
         return false;
-      }
-      if(!ptable_insert(page))
-      {
-        return false;
-      }
+
+      /* Load this page. */
+      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+        {
+          palloc_free_page (kpage);
+          return false; 
+        }
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+      /* Add the page to the process's address space. */
+      if (!install_page (upage, kpage, writable)) 
+        {
+          palloc_free_page (kpage);
+          return false; 
+        }
+
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
-      ofs += PGSIZE;
     }
   return true;
 }
@@ -718,37 +631,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-
   uint8_t *kpage;
-  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
-  struct page *page = malloc(sizeof(struct page));
-  page->upage = upage;
-  page->writable = true;
-  page->loaded = true;
-  page->file = NULL;
-  page->swaped = false;
-  page->mapid = -1;
-  page->busy = false;
-  kpage = frame_alloc(PAL_USER | PAL_ZERO, page);
-  if(!kpage)
-  {
-    free(page);
-    return false;
-  }
-  if(!install_page(upage, kpage, true))
-  {
-    frame_free(kpage);
-    free(page);
-    return false;
-  }
-  if(!ptable_insert(page))
-  {
-    frame_free(kpage);
-    free(page);
-    return false;
-  }
-  *esp = PHYS_BASE;
-  return true;
+  bool success = false;
+
+  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  if (kpage != NULL) 
+    {
+      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      if (success)
+        *esp = PHYS_BASE;
+      else
+        palloc_free_page (kpage);
+    }
+  return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
@@ -760,8 +655,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-
-bool
+static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();

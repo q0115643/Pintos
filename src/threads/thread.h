@@ -3,7 +3,6 @@
 
 #include <debug.h>
 #include <list.h>
-#include <hash.h>
 #include <stdint.h>
 #include "threads/synch.h"
 
@@ -124,14 +123,6 @@ struct thread
     enum thread_status child_status;
     struct semaphore load_sema;
     struct thread *parent;
-#endif
-#ifdef VM
-    struct hash page_table;             /* Page table. */
-    void *esp;                          /* Stack Pointer. */
-
-    /* start process에서 초기화 */
-    struct list mmap_list;              /* mmap table */
-    int mapid;                          /* mapid */
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

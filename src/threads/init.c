@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <user/syscall.h>
 #include "devices/kbd.h"
 #include "devices/input.h"
 #include "devices/serial.h"
@@ -34,10 +33,6 @@
 #include "devices/disk.h"
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
-#endif
-#ifdef VM
-#include "vm/frame.h"
-#include "vm/swap.h"
 #endif
 
 /* Amount of physical memory, in 4 kB pages. */
@@ -119,10 +114,7 @@ main (void)
   disk_init ();
   filesys_init (format_filesys);
 #endif
-#ifdef VM
-  frame_init();
-  swap_init();
-#endif
+
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */

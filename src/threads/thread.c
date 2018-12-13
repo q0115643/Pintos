@@ -14,9 +14,6 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-#ifdef VM
-#include "vm/frame.h"
-#endif
 void *malloc(size_t);
 
 //#define DEBUG
@@ -147,13 +144,12 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-  
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -355,6 +351,7 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
+
   /* Just set our status to dying and schedule another process.
      We will be destroyed during the call to schedule_tail(). */
   intr_disable ();
@@ -529,14 +526,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->acquiring_lock = NULL;
   list_init(&t->lock_list);
   t->original_priority = priority;
-  /* mmap 초기화 */
-  list_init(&t->mmap_list);
-  t->mapid = 0;
-  /* project 2를 위한 것들 */
+#ifdef USERPROG
   sema_init(&t->load_sema, 0);
   list_init (&t->fd_list);
   list_init (&t->child_list);
   t->fd_count = 2;
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

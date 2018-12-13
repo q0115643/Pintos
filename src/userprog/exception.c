@@ -7,20 +7,12 @@
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
 
-#ifdef VM
-#include "vm/frame.h"
-#include "vm/page.h"
-#endif
-
-//#define DEBUG
-
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
-/* Help functions. */
-void bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f);
+
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -136,7 +128,7 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-  bool success = false;
+
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -157,56 +149,18 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-
-  /*
-   *  user 주소에서 fault, page가 없음.
-   */
-#ifdef DEBUG
-  printf("exception 진입\n");
-#endif
-  if(not_present)
-  {
-    struct page *page = ptable_lookup(fault_addr);
-    if(page)
-    {
-      page->busy = true;
-      success = page_load(page);
-      page->busy = false;
-      if(success) return;
-    }
-    else
-    { //stack growing 스택은 높은 주소에서 낮은 주소로 자람.
-      bring_esp_from_thread_struct(user, not_present, f);
-      if(fault_addr >= f->esp - 32 && fault_addr >= PHYS_BASE - STACK_LIMIT)
-      { // PUSHA signal이 permission 받으러온거임.
-        success = stack_growth(fault_addr);
-        if(success) return;
-      }
-    }
+  /* 위 cause 모두 exit으로 */
+  if (not_present || write || user) {
+    system_exit(-1);
   }
-  if(not_present || write || user) system_exit(-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  // if(!success)
-  // {
-  //   printf ("Page fault at %p: %s error %s page in %s context.\n",
-  //           fault_addr,
-  //           not_present ? "not present" : "rights violation",
-  //           write ? "writing" : "reading",
-  //           user ? "user" : "kernel");
-  //   kill (f);
-  // }
-}
-
-/* Help functions. */
-
-void
-bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
-{
-  if(!user && f->esp >= PHYS_BASE - STACK_LIMIT)
-  { // kernel모드에서 page_fault가 뜨면 f->esp가 이상한 값으로 오는 수가 있음. 이상한 값이면 kernel로의 전환에서 저장한 esp 소환
-    f->esp = thread_current()->esp;
-  }
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  kill (f);
 }
 
