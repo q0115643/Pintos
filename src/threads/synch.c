@@ -32,6 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+//#define DEBUG
 /* lock이 들고 있는 최대치의 priority(lock->lock_max_priority) 순서대로 정렬하기 위한 보조 함수 */
 static bool 
 lock_set_priority_list (const struct list_elem* a_, const struct list_elem* b_,
@@ -305,6 +306,7 @@ lock_try_acquire (struct lock *lock)
   if (success)
     lock->holder = thread_current ();
   return success;
+  
 }
 
 /* Releases LOCK, which must be owned by the current thread.
@@ -335,6 +337,9 @@ lock_release (struct lock *lock)
 void
 release_all_locks()
 {
+#ifdef DEBUG
+  printf("release_all_locks() 진입\n");
+#endif
   struct thread *curr = thread_current ();
   struct lock *lock;
   while(!list_empty(&curr->lock_list))
@@ -352,7 +357,16 @@ lock_held_by_current_thread (const struct lock *lock)
 {
   ASSERT (lock != NULL);
 
-  return lock->holder == thread_current ();
+  /*
+  if(lock == NULL){
+    printf("Lock is NULL!!\n");
+  }
+  struct thread * t = thread_current();
+  if(lock->holder != t){
+    printf("Lock holder fail! \n");
+  }*/
+
+  return lock->holder == thread_current();
 }
 
 /* One semaphore in a list. */
