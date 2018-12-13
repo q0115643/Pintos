@@ -21,7 +21,6 @@ struct page
 	struct file *file;
 	off_t offset;
 	size_t read_bytes;
-	size_t zero_bytes;
 	bool writable;
 	bool loaded;
 	bool swaped;
@@ -32,7 +31,7 @@ struct page
 };
 
 void ptable_init(struct hash *ptable);
-struct page* page_create(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
+struct page* page_create(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, bool writable);
 bool ptable_insert(struct page *page);
 struct page* ptable_lookup(void* addr);
 bool page_load_file(struct page *page);

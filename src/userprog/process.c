@@ -245,16 +245,14 @@ mmap_clear()
 #endif
   struct thread *curr = thread_current();
   struct list_elem *e;
-  struct list_elem *next;
   struct page *page;
   struct file *file = NULL;
-  if(list_empty(&curr->mmap_list))
-    return;
+  if(list_empty(&curr->mmap_list)) return;
   int prev_mapid = 0;
   for(e=list_front(&curr->mmap_list);e!=list_end(&curr->mmap_list);)
   {
-    next = list_next(e);
     page = list_entry(e, struct page, list_elem);
+    e = list_next(e);
     page->busy = true;
     list_remove(&page->list_elem);
     if(page->loaded)
@@ -281,7 +279,6 @@ mmap_clear()
       file = page->file;
     }
     free(page);
-    e = next;
   }
   if(file)
   {
@@ -699,7 +696,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       struct page *page;
-      if((page=page_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)) == NULL)
+      if((page=page_create(file, ofs, upage, page_read_bytes, writable)) == NULL)
       {
         return false;
       }

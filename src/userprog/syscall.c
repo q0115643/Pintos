@@ -44,17 +44,11 @@ static struct lock file_lock;
 void
 filesys_acquire(void)
 {
-#ifdef DEBUG
-	printf("filesys_acquire()\n");
-#endif
 	lock_acquire(&file_lock);
 }
 void
 filesys_release(void)
 {
-#ifdef DEBUG
-	printf("filesys_release()\n");
-#endif
 	lock_release(&file_lock);
 }
 
@@ -421,19 +415,18 @@ system_close(int fd)
 }
 
 bool 
-mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, int mapid)
+mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, int mapid)
 {
 #ifdef DEBUG
 	printf("mmap_page_create(): 진입\n");
 #endif
   struct thread *curr = thread_current();
   struct page *page = malloc(sizeof(struct page));
-  if (!page) return false;
+  if(!page) return false;
   page->file = file;
   page->offset = ofs;
   page->upage = upage;
   page->read_bytes = read_bytes;
-  page->zero_bytes = zero_bytes;
   page->loaded = false;
   page->mmaped = true;
   page->writable = true;
@@ -456,42 +449,37 @@ system_mmap (int fd, void *addr)
 	printf("system_mmap(): 진입\n");
 #endif
 	/* thread에서  fd 이용하여 file 가져오기 */
+	struct thread *curr = thread_current();
 	struct file *f;
 	struct page *page;
-	filesys_acquire();
-	f = get_file_from_fd(fd);
-	filesys_release();
-	if(!f) return -1;
-	/* address 검사 */
-	if(!is_user_vaddr(addr) || addr < USER_VADDR_BOTTOM || ((uint32_t) addr % PGSIZE) != 0) return -1;
-	filesys_acquire();
-	struct file *file = file_reopen(f);
-	filesys_release();
-	if(!file) return -1;
-	/* file의 length 알아오기 */
 	off_t read_bytes;
-	filesys_acquire();
-	read_bytes = file_length(f);
-	filesys_release();
-	if(read_bytes == 0) return -1;
-	filesys_acquire();
+	f = get_file_from_fd(fd);
+	if(!f || addr == 0 || ((uint32_t) addr % PGSIZE) != 0) return -1;
+	struct file *file = file_reopen(f);
+	if(!file || file_length(f)==0) return -1;
 	read_bytes = file_length(file);
-	filesys_release();
 	off_t offset = 0;
-	struct page *mmap_page;
-	int mapid = thread_current()->mapid++;
+	int mapid = curr->mapid++;
 	while (read_bytes > 0)
 	{
   	uint32_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-  	uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
-  	if(!mmap_page_create(file, offset, addr, page_read_bytes, page_zero_bytes, mapid))
+  	if(!mmap_page_create(file, offset, addr+offset, page_read_bytes, mapid))
   	{
-	    system_munmap(mapid);
+	    curr->mapid--;
+	    while(offset > 0)
+	    {
+	    	offset -= PGSIZE;
+	    	page = list_entry(list_pop_back(&curr->mmap_list), struct page, list_elem);
+	    	hash_delete(&curr->page_table, &page->hash_elem);
+	    	free(page);
+	    }
+	    filesys_acquire();
+	    file_close(file);
+	    filesys_release();
   		return -1;
   	}
   	read_bytes -= page_read_bytes;
-    offset += page_read_bytes;
-    addr += PGSIZE;
+    offset += PGSIZE;
 	}
 	return mapid;
 }
@@ -504,19 +492,16 @@ system_munmap(int mapid)
 #endif
 	struct thread *curr = thread_current();
 	struct list_elem *e;
-	struct list_elem *next;
 	struct page *page;
 	struct file *file = NULL;
-	if(list_empty(&curr->mmap_list))
-		return;
+	if(list_empty(&curr->mmap_list)) return;
 	bool file_put = false;
 	for(e=list_front(&curr->mmap_list);e!=list_end(&curr->mmap_list);)
 	{
-		next = list_next(e);
 		page = list_entry(e, struct page, list_elem);
+		e = list_next(e);
 		if(page->mapid != mapid)
     {
-      e = next;
       continue;
     }
 		list_remove(&page->list_elem);
@@ -538,7 +523,6 @@ system_munmap(int mapid)
       file_put = true;
     }
 		free(page);
-		e = next;
 	}
 	if(file)
   {

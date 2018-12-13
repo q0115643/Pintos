@@ -48,16 +48,14 @@ ptable_init(struct hash *ptable)
 
 struct page *
 page_create(struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+              uint32_t read_bytes, bool writable)
 {
 	struct page *page = malloc(sizeof(struct page));
 	if(!page) return NULL;
-
 	page->file = file;
 	page->offset = ofs;
 	page->upage = upage;
 	page->read_bytes = read_bytes;
-	page->zero_bytes = zero_bytes;
 	page->writable = writable;
 	page->loaded = false;
 	page->swaped = false;
@@ -112,7 +110,7 @@ page_load_file(struct page *page)
 			return false;
 		}
 		filesys_release();
-		memset(kpage + page->read_bytes, 0, page->zero_bytes);
+    memset(kpage + page->read_bytes, 0, PGSIZE - page->read_bytes);
 	}
 	if(!install_page(page->upage, kpage, page->writable))
 	{
@@ -176,7 +174,6 @@ page_destroy_function (struct hash_elem *e, void *aux UNUSED)
   struct page *page;
   void *kpage;
   page = hash_entry(e, struct page, hash_elem);
-  //page->busy = true; 쫓아내도 됨...
   kpage = pagedir_get_page(cur->pagedir, page->upage);
   if(kpage != NULL)
   	frame_free(kpage);
