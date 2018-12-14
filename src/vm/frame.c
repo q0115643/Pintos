@@ -27,18 +27,12 @@ frame_init(void)
 void
 frame_acquire(void)
 {
-#ifdef DEBUG
-	printf("frame_acquire\n");
-#endif
 	lock_acquire(&frame_lock);
 }
 
 void
 frame_release(void)
 {
-#ifdef DEBUG
-	printf("frame_release\n");
-#endif
 	lock_release(&frame_lock);
 }
 
@@ -46,9 +40,6 @@ frame_release(void)
 void
 frame_set_elem(void *frame, struct page* page)
 {
-#ifdef DEBUG
-	printf("frame_set_elem 진입\n");
-#endif
 	/* page frame mapping table 구성 */
 	/* frame elem 구성 */
 	struct frame *new_frame = malloc(sizeof(struct frame));
@@ -65,9 +56,6 @@ frame_set_elem(void *frame, struct page* page)
 void *
 frame_victim(enum palloc_flags flags)
 {
-#ifdef DEBUG
-	printf("frame_victim 진입\n");
-#endif
 	frame_acquire();
 	struct frame *frame = NULL;
 	struct page *page;
@@ -151,9 +139,6 @@ frame_victim(enum palloc_flags flags)
 void *
 frame_alloc(enum palloc_flags flags, struct page* page)
 {
-#ifdef DEBUG
-	printf("frame_alloc 진입\n");
-#endif
 	void *frame = palloc_get_page(PAL_USER | flags);
 	/* page 할당 성공한 경우, */
 	if(frame)
@@ -178,9 +163,6 @@ frame_alloc(enum palloc_flags flags, struct page* page)
 void
 frame_free(void *frame)
 {
-#ifdef DEBUG
-	printf("frame_free 진입\n");
-#endif
 	frame_acquire();
 	struct list_elem *e;
 	for(e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
