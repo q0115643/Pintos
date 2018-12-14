@@ -529,9 +529,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->acquiring_lock = NULL;
   list_init(&t->lock_list);
   t->original_priority = priority;
+#ifdef VM
   /* mmap 초기화 */
   list_init(&t->mmap_list);
   t->mapid = 0;
+#endif
   /* project 2를 위한 것들 */
   sema_init(&t->load_sema, 0);
   list_init (&t->fd_list);

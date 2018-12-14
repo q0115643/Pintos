@@ -12,7 +12,9 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "filesys/off_t.h"
+#ifdef VM
 #include "vm/page.h"
+#endif
 
 void free(void *ptr);
 void *malloc(size_t);
@@ -30,8 +32,10 @@ static int system_write(int fd, const void* buffer, unsigned size);
 static void system_seek(int fd, unsigned position);
 static unsigned system_tell(int fd);
 static void system_close(int fd);
+#ifdef VM
 static int system_mmap (int fd, void *addr);
 static void system_munmap (int mapid);
+#endif
 
 //#define DEBUG
 
@@ -79,7 +83,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   int32_t args[3];
   unsigned int argc;
   if(!is_user_vaddr(f->esp)) system_exit(-1);
+#ifdef VM
   thread_current()->esp = f->esp;
+#endif
   switch(*(int*)f->esp)
   {
   	case SYS_HALT:
@@ -171,6 +177,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   		system_close((int)args[0]);
   		break;
   	}
+#ifdef VM
   	case SYS_MMAP:
   	{
   		argc = 2;
@@ -185,6 +192,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   		system_munmap((int) args[0]);
   		break;
   	}
+#endif
   }
 }
 
@@ -419,6 +427,7 @@ system_close(int fd)
 	filesys_release();
 }
 
+#ifdef VM
 bool 
 mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_bytes, int mapid)
 {
@@ -445,8 +454,9 @@ mmap_page_create(struct file *file, int32_t ofs, uint8_t *upage, uint32_t read_b
   list_push_back(&curr->mmap_list, &page->list_elem);
   return true;
 }
+#endif
 
-
+#ifdef VM
 static int
 system_mmap (int fd, void *addr)
 {
@@ -478,7 +488,9 @@ system_mmap (int fd, void *addr)
 	}
 	return mapid;
 }
+#endif
 
+#ifdef VM
 static void
 system_munmap(int mapid)
 {
@@ -521,6 +533,7 @@ system_munmap(int mapid)
   }
 	return;
 }
+#endif
 
 static int
 add_thread_file_descriptor(struct file *file)

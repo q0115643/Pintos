@@ -20,7 +20,9 @@ static long long page_fault_cnt;
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
 /* Help functions. */
+#ifdef VM
 void bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f);
+#endif
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -158,6 +160,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef VM
   /*
    *  user 주소에서 fault, page가 없음.
    */
@@ -184,6 +187,7 @@ page_fault (struct intr_frame *f)
       }
     }
   }
+#endif
   if(not_present || write || user) system_exit(-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
@@ -200,7 +204,7 @@ page_fault (struct intr_frame *f)
 }
 
 /* Help functions. */
-
+#ifdef VM
 void
 bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
 {
@@ -209,4 +213,4 @@ bring_esp_from_thread_struct(bool user, bool not_present, struct intr_frame *f)
     f->esp = thread_current()->esp;
   }
 }
-
+#endif

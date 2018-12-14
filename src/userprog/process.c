@@ -237,6 +237,7 @@ process_wait (tid_t child_tid)
   return status;
 }
 
+#ifdef VM
 void
 mmap_clear()
 {
@@ -284,6 +285,7 @@ mmap_clear()
   }
   return;
 }
+#endif
 
 /* Free the current process's resources. */
 void
@@ -296,8 +298,10 @@ process_exit (void)
   uint32_t *pd;
   alert_parent();  // change parent->child_list의 child->exit true로.
   close_all_files();
+#ifdef VM
   mmap_clear();
   ptable_clear();
+#endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -690,21 +694,34 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
+#ifdef VM
       struct page *page;
       if((page=page_create(file, ofs, upage, page_read_bytes, writable)) == NULL)
-      {
         return false;
-      }
       if(!ptable_insert(page))
-      {
         return false;
-      }
+#else
+      uint8_t *kpage = palloc_get_page(PAL_USER);
+      if(!kpage) return false;
+      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+        {
+          palloc_free_page (kpage);
+          return false;
+        }
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      if (!install_page (upage, kpage, writable))
+        {
+          palloc_free_page (kpage);
+          return false;
+        }
+#endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+#ifdef VM
       ofs += PGSIZE;
+#endif
     }
   return true;
 }
@@ -717,6 +734,7 @@ setup_stack (void **esp)
 
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+#ifdef VM
   struct page *page = malloc(sizeof(struct page));
   page->upage = upage;
   page->writable = true;
@@ -726,23 +744,34 @@ setup_stack (void **esp)
   page->mapid = -1;
   page->busy = false;
   kpage = frame_alloc(PAL_USER | PAL_ZERO, page);
+#else
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+#endif
   if(!kpage)
   {
+#ifdef VM
     free(page);
+#endif
     return false;
   }
   if(!install_page(upage, kpage, true))
   {
+#ifdef VM
     frame_free(kpage);
     free(page);
+#else
+    palloc_free_page(kpage);
+#endif
     return false;
   }
+#ifdef VM
   if(!ptable_insert(page))
   {
     frame_free(kpage);
     free(page);
     return false;
   }
+#endif
   *esp = PHYS_BASE;
   return true;
 }
