@@ -283,9 +283,13 @@ system_filesize(int fd)
 #endif
 	int size;
 	struct file *file;
-	file = get_file_from_fd(fd);
-	if(file==NULL) system_exit(-1);
 	filesys_acquire();
+	file = get_file_from_fd(fd);
+	if(file==NULL)
+	{
+		filesys_release();
+		system_exit(-1);
+	}
 	size = file_length(file);
 	filesys_release();
 	return size;
@@ -300,7 +304,7 @@ system_read(int fd, void* buffer, unsigned size)
 	struct file *file;
 	unsigned i;
 	int bytes = -1;
-	if((void*)buffer==NULL || (void *)(buffer+size)==NULL || !is_user_vaddr(buffer))
+	if((void*)buffer==NULL || !is_user_vaddr(buffer))
 		system_exit(-1);
 	if(fd==STDIN_FILENO)
 	{
@@ -313,15 +317,15 @@ system_read(int fd, void* buffer, unsigned size)
 	}
 	else
 	{
-		if(!is_user_vaddr(buffer+size)) system_exit(-1);
-		else
+		filesys_acquire();
+		file = get_file_from_fd(fd);
+		if(!file)
 		{
-			file = get_file_from_fd(fd);
-			if(!file) system_exit(-1);
-			filesys_acquire();
-			bytes = file_read(file, buffer, size);
 			filesys_release();
+			system_exit(-1);
 		}
+		bytes = file_read(file, buffer, size);
+		filesys_release();
 	}
 	return bytes;
 }
@@ -334,7 +338,7 @@ system_write(int fd, const void* buffer, unsigned size)
 #endif
 	struct file *file;
 	int result = -1;
-	if((void*)buffer==NULL || (void*)(buffer+size)==NULL || !is_user_vaddr(buffer)) system_exit(-1);
+	if((void*)buffer==NULL || !is_user_vaddr(buffer)) system_exit(-1);
 	if(fd==STDOUT_FILENO)
 	{
 		putbuf(buffer, size);
@@ -342,15 +346,15 @@ system_write(int fd, const void* buffer, unsigned size)
 	}
 	else
 	{
-		if(!is_user_vaddr((void*)(buffer+size))) system_exit(-1);
-		else
+		filesys_acquire();
+		file = get_file_from_fd(fd);
+		if(!file)
 		{
-			file = get_file_from_fd(fd);
-			if(!file) system_exit(-1);
-			filesys_acquire();
-			result = file_write(file, buffer, size);
 			filesys_release();
+			system_exit(-1);
 		}
+		result = file_write(file, buffer, size);
+		filesys_release();
 	}
 	return result;
 }
@@ -363,9 +367,13 @@ system_seek(int fd, unsigned position)
 #endif
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
-	file = get_file_from_fd(fd);
-	if(!file) system_exit(-1);
 	filesys_acquire();
+	file = get_file_from_fd(fd);
+	if(!file)
+	{
+		filesys_release();
+		system_exit(-1);
+	}
 	file_seek(file, position);
 	filesys_release();
 }
@@ -379,9 +387,13 @@ system_tell(int fd)
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
 	unsigned int tell = 0;
-	file = get_file_from_fd(fd);
-	if(!file) system_exit(-1);
 	filesys_acquire();
+	file = get_file_from_fd(fd);
+	if(!file)
+	{
+		filesys_release();
+		system_exit(-1);
+	}
 	tell = file_tell(file);
 	filesys_release();
 	return tell;
@@ -395,9 +407,13 @@ system_close(int fd)
 #endif
 	if(fd==STDIN_FILENO || fd==STDOUT_FILENO) system_exit(-1);
 	struct file *file;
-	file = get_file_from_fd(fd);
-	if(!file) system_exit(-1);
 	filesys_acquire();
+	file = get_file_from_fd(fd);
+	if(!file)
+	{
+		filesys_release();
+		system_exit(-1);
+	}
 	file_close(file);
 	remove_file(fd);
 	filesys_release();
@@ -440,7 +456,9 @@ system_mmap (int fd, void *addr)
 	/* thread에서  fd 이용하여 file 가져오기 */
 	struct file *f;
 	struct page *page;
+	filesys_acquire();
 	f = get_file_from_fd(fd);
+	filesys_release();
 	if(!f || !is_user_vaddr(addr) || addr < USER_VADDR_BOTTOM || ((uint32_t) addr % PGSIZE) != 0) return -1;
 	struct file *file = file_reopen(f);
 	if(!file || file_length(f)==0) return -1;
@@ -522,11 +540,10 @@ get_file_from_fd(int fd)
 	struct thread_fd *t_fd;
 	struct list_elem *e;
 	if(fd<2 || fd>cur->fd_count) return NULL;
-	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list);
-			e=list_next(e))
+	for(e=list_begin(&cur->fd_list); e!=list_end(&cur->fd_list); e=list_next(e))
 	{
 		t_fd = list_entry(e, struct thread_fd, elem);
-		if(t_fd->fd ==fd) return t_fd->file;
+		if(t_fd->fd == fd) return t_fd->file;
 	}
 	return NULL;
 }
