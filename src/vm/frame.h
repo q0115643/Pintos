@@ -7,7 +7,8 @@
 
 struct list frame_table;
 
-struct frame {
+struct frame
+{
 	struct thread *frame_owner;
 	void *kpage;
 	struct list_elem elem;

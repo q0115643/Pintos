@@ -117,9 +117,8 @@ main (void)
 
 #ifdef FILESYS
   /* Initialize file system. */
-  disk_init ();
-  filesys_init (format_filesys);
-  cache_init();
+  disk_init();
+  filesys_init(format_filesys);
 #endif
 #ifdef VM
   frame_init();
