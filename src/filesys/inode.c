@@ -269,23 +269,18 @@ inode_create (disk_sector_t sector, off_t length)
       disk_inode->block_count = 0;
       disk_inode->magic = INODE_MAGIC;
       struct inode *inode = inode_open(sector);
-
-      if (free_map_allocate(1, &disk_inode->start))
+      cache_write (sector, disk_inode, 0, DISK_SECTOR_SIZE);
+      if(inode_allocate(inode, disk_inode->length))
       {
-        cache_write(sector, disk_inode, 0, DISK_SECTOR_SIZE);
-        if(inode_allocate(inode, disk_inode->length))
-        {
-          disk_inode->block_count = inode->block_count;
-          disk_inode->indirect_count = inode->indirect_count;
-          disk_inode->dindirect_count = inode->dindirect_count;
-          memcpy(&disk_inode->blocks, &inode->blocks, 14 * sizeof(disk_sector_t));
-
-          success = true;
-
-        }
+        disk_inode->block_count = inode->block_count;
+        disk_inode->indirect_count = inode->indirect_count;
+        disk_inode->dindirect_count = inode->dindirect_count;
+        memcpy(&disk_inode->blocks, &inode->blocks, 14 * sizeof(disk_sector_t));
+        //cache_write (sector, disk_inode, 0, DISK_SECTOR_SIZE);
+        success = true;
 
       }
-      
+
       /*
       if (free_map_allocate (sectors, &disk_inode->start))
         {
@@ -315,6 +310,9 @@ inode_create (disk_sector_t sector, off_t length)
 struct inode *
 inode_open (disk_sector_t sector) 
 {
+#ifdef DEBUG_INODE
+  printf("inode_open(): 진입\n");
+#endif
   struct list_elem *e;
   struct inode *inode;
 
@@ -409,7 +407,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 {
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
-  if(offset >= inode->length) return bytes_read;
+
+  //if(offset >= inode->length) return bytes_read;
 
   while (size > 0) 
     {
