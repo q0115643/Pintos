@@ -13,6 +13,7 @@
 #define INODE_MAGIC 0x494e4f44
 
 //#define DEBUG
+#define DEBUG_INODE
 
 /* PJ4 : inode 구조체 변경 */
 #define INODE_DIRECT_BLOCKS 12
@@ -134,14 +135,14 @@ inode_init (void)
 
 
 bool
-inode_allocate(struct inode_disk * inode_disk, struct inode *inode)
+inode_allocate(struct inode *inode, off_t length)
 {
-  size_t new_sectors = bytes_to_sectors(inode_disk->length) - bytes_to_sectors(inode->length);
+  size_t new_sectors = bytes_to_sectors(length) - bytes_to_sectors(inode->length);
   static char zeros[DISK_SECTOR_SIZE];
 
   if(new_sectors == 0)
   {
-    inode->length = inode_disk->length;
+    inode->length = length;
     return true;
   }
 
@@ -152,7 +153,7 @@ inode_allocate(struct inode_disk * inode_disk, struct inode *inode)
 
   while (sector_count < INODE_DIRECT_BLOCKS && new_sectors != 0)
   {
-    free_map_allocate(1, &inode_disk->blocks[sector_count]);
+    free_map_allocate(1, &inode->blocks[sector_count]);
     cache_write(inode->blocks[sector_count], zeros, 0, DISK_SECTOR_SIZE);
     sector_count++;
     new_sectors--;
@@ -228,14 +229,10 @@ inode_allocate(struct inode_disk * inode_disk, struct inode *inode)
 
   }
 
+  inode->length = length;
   inode->block_count = sector_count;
   inode->indirect_count = indirect_count;
   inode->dindirect_count = dindirect_count;
-
-  inode_disk->block_count = sector_count;
-  inode_disk->indirect_count = indirect_count;
-  inode_disk->dindirect_count = dindirect_count;
-  memcpy(&inode_disk->blocks, &inode->blocks, 14 * sizeof(disk_sector_t));
 
   return true;
 
@@ -251,6 +248,9 @@ inode_allocate(struct inode_disk * inode_disk, struct inode *inode)
 bool
 inode_create (disk_sector_t sector, off_t length)
 {
+#ifdef DEBUG_INODE
+  printf("inode_create(): 진입\n");
+#endif
   struct inode_disk *disk_inode = NULL;
   bool success = false;
 
@@ -273,8 +273,17 @@ inode_create (disk_sector_t sector, off_t length)
       if (free_map_allocate(1, &disk_inode->start))
       {
         cache_write(sector, disk_inode, 0, DISK_SECTOR_SIZE);
-        if(inode_allocate(disk_inode, inode))
+        if(inode_allocate(inode, disk_inode->length))
+        {
+          disk_inode->block_count = inode->block_count;
+          disk_inode->indirect_count = inode->indirect_count;
+          disk_inode->dindirect_count = inode->dindirect_count;
+          memcpy(&disk_inode->blocks, &inode->blocks, 14 * sizeof(disk_sector_t));
+
           success = true;
+
+        }
+
       }
       
       /*
@@ -448,7 +457,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
-  if (offset + size > inode->length) inode_alloc_extend(inode, offset + size);
+  if (offset + size > inode->length) inode_allocate(inode, offset + size);
 
   while (size > 0) 
     {
