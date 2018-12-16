@@ -12,7 +12,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-//#define DEBUG
+#define DEBUG
 
 /* PJ4 : inode 구조체 변경 */
 #define INODE_DIRECT_BLOCKS 12
@@ -177,13 +177,25 @@ inode_allocate(struct inode *inode, off_t length)
 
   /* direct inode alloc */
   disk_sector_t sector_count = inode->block_count;
+#ifdef DEBUG
+  printf("inode_allocate(): block count 확인 %u \n", inode->block_count);
+#endif
   disk_sector_t indirect_count = inode->indirect_count;
   disk_sector_t dindirect_count = inode->dindirect_count;
 
   while (sector_count < INODE_DIRECT_BLOCKS && new_sectors != 0)
   {
+#ifdef DEBUG
+  printf("inode_allocate(): direct_block 할당\n");
+#endif
     free_map_allocate(1, &inode->blocks[sector_count]);
+#ifdef DEBUG
+  printf("inode_allocate(): direct_block 할당 2\n");
+#endif
     cache_write(inode->blocks[sector_count], zeros, 0, DISK_SECTOR_SIZE);
+#ifdef DEBUG
+  printf("inode_allocate(): direct_block 할당 3\n");
+#endif
     sector_count++;
     new_sectors--;
   }
@@ -191,6 +203,9 @@ inode_allocate(struct inode *inode, off_t length)
   /* indirect inode alloc */
   if (sector_count == 12 && new_sectors != 0)
   {
+#ifdef DEBUG
+  printf("inode_allocate(): indirect block 할당\n");
+#endif
     disk_sector_t * indirect_block = (disk_sector_t*) malloc(DISK_SECTOR_SIZE); // 512 Bytes
 
     // indirect block table 읽어오기
@@ -220,6 +235,9 @@ inode_allocate(struct inode *inode, off_t length)
   /* Double inode alloc */
   if (sector_count == 13 && new_sectors != 0)
   {
+#ifdef DEBUG
+  printf("inode_allocate(): Double indirect block 할당\n");
+#endif
     disk_sector_t *fst_btable = (disk_sector_t*) malloc(DISK_SECTOR_SIZE);
     disk_sector_t *snd_btable = (disk_sector_t*) malloc(DISK_SECTOR_SIZE);
 
@@ -254,6 +272,10 @@ inode_allocate(struct inode *inode, off_t length)
     free(fst_btable);
     free(snd_btable);
   }
+#ifdef DEBUG
+  printf("inode_allocate(): block 할당 성공!\n");
+#endif
+
 
   inode->length = length;
   inode->block_count = sector_count;
@@ -486,7 +508,17 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
 
-  if(offset >= inode->length) return bytes_read;
+#ifdef DEBUG
+  printf("inode_read_at(): 확인하기\n");
+#endif
+
+  if(offset >= inode->length) 
+  {
+#ifdef DEBUG
+  printf("inode_read_at(): error? overread\n");
+#endif
+  //  return;
+  }
 
   while (size > 0) 
     {
@@ -541,7 +573,15 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     return 0;
 
   if (offset + size > inode->length)
+  {
     inode_allocate(inode, offset + size);
+    /* disk inode 를 꺼내 와서 */
+    struct inode_disk *disk_inode = (struct inode_disk *) malloc(DISK_SECTOR_SIZE);
+    cache_read(inode_get_inumber(inode), disk_inode, 0, DISK_SECTOR_SIZE);
+    disk_inode->length = inode->length;
+    cache_write(inode_get_inumber(inode), disk_inode, 0, DISK_SECTOR_SIZE);
+    free(disk_inode);
+  }
 
   while (size > 0) 
     {
