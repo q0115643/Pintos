@@ -87,8 +87,11 @@ byte_to_sector (const struct inode *inode, off_t pos)
   if(pos >= disk_inode->length)
   {
 #ifdef DEBUG
-  printf("byte_to_sector() error : %u \n", result);
+    printf("byte_to_sector() error : %u \n", result);
 #endif
+    if(fst_btable) free(fst_btable);
+    if(snd_btable) free(snd_btable);
+    free(blocks);
     free(disk_inode);
     return -1;
   }
@@ -241,7 +244,6 @@ inode_allocate(struct inode *inode, off_t length)
         new_sectors--;
       }
       cache_write(fst_btable[indirect_count], snd_btable, 0, DISK_SECTOR_SIZE);
-      free(snd_btable);
       if(dindirect_count == PTR_PER_BLOCKS)
       {
         dindirect_count = 0;
@@ -250,6 +252,7 @@ inode_allocate(struct inode *inode, off_t length)
     }
     cache_write(inode->blocks[sector_count], fst_btable, 0, DISK_SECTOR_SIZE);
     free(fst_btable);
+    free(snd_btable);
   }
 
   inode->length = length;
@@ -428,10 +431,10 @@ inode_free (struct inode *inode)
         sector_count--;
       }
       free_map_release(fst_btable[j], 1);
-      free(snd_btable);
     }
     free_map_release(inode->blocks[i], 1);
     free(fst_btable);
+    free(snd_btable);
   }
 }
 
