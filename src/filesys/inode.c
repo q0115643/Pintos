@@ -12,7 +12,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-#define DEBUG
+//#define DEBUG
 
 /* PJ4 : inode 구조체 변경 */
 #define INODE_DIRECT_BLOCKS 12
@@ -238,8 +238,8 @@ inode_allocate(struct inode *inode, off_t length)
         dindirect_count++;
         new_sectors--;
       }
-      free(snd_btable);
       cache_write(fst_btable[indirect_count], snd_btable, 0, DISK_SECTOR_SIZE);
+      free(snd_btable);
       if(dindirect_count == PTR_PER_BLOCKS)
       {
         dindirect_count = 0;
