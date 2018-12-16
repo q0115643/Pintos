@@ -375,7 +375,7 @@ inode_free (struct inode *inode)
   if (i < INODE_DIRECT_BLOCKS + INODE_INDIRECT_BLOCKS && sector_count != 0)
   {
     disk_sector_t blocks[PTR_PER_BLOCKS];
-    cache_read(inode->blocks[i], &blocks, 0, DISK_SECTOR_SIZE);
+    cache_read(inode->blocks[i], blocks, 0, DISK_SECTOR_SIZE);
     bool is_full = false;
     if(inode->block_count < INODE_DOUBLE_INDIRECT_BLOCKS)
       is_full = true;
@@ -398,17 +398,17 @@ inode_free (struct inode *inode)
 
   }
 
-  if (i == INODE_DOUBLE_INDIRECT_BLOCKS -1)
+  if (i == INODE_DOUBLE_INDIRECT_BLOCKS - 1)
   {
     disk_sector_t fst_btable[PTR_PER_BLOCKS];
     disk_sector_t snd_btable[PTR_PER_BLOCKS];
-    cache_read(inode->blocks[i], &fst_btable, 0, DISK_SECTOR_SIZE);
+    cache_read(inode->blocks[i], fst_btable, 0, DISK_SECTOR_SIZE);
     size_t indirect_count = inode->indirect_count;
 
     size_t j;
     for(j = 0; j < indirect_count; j++)
     {
-      cache_read(fst_btable[i], &snd_btable, 0, DISK_SECTOR_SIZE);
+      cache_read(fst_btable[i], snd_btable, 0, DISK_SECTOR_SIZE);
       size_t dindirect_count;
       if(j == indirect_count-1)
         dindirect_count = inode->dindirect_count;
@@ -452,10 +452,10 @@ inode_close (struct inode *inode)
     /* Deallocate blocks if removed. */
     if (inode->removed) 
     {
-      inode_free (inode);
       cache_read(inode_get_inumber(inode), disk_inode, 0, DISK_SECTOR_SIZE);
       free_map_release(inode->sector, 1);
-      free_map_release(disk_inode->start, bytes_to_sectors(disk_inode->length)); 
+      inode_free (inode);
+      //free_map_release(disk_inode->start, bytes_to_sectors(disk_inode->length)); 
     }
     free(inode);
     free(disk_inode);
