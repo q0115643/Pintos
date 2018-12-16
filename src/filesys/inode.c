@@ -296,7 +296,8 @@ inode_create (disk_sector_t sector, off_t length)
                 //disk_write (filesys_disk, disk_inode->start + i, zeros); 
             }
           success = true; 
-        } */
+        } 
+        */
       free (disk_inode);
     }
   return success;
@@ -362,6 +363,83 @@ inode_get_inumber (const struct inode *inode)
   return inode->sector;
 }
 
+
+void
+inode_free (struct inode *inode)
+{
+  size_t sector_count = bytes_to_sectors(inode->length);
+  if(sector_count == 0) return;
+
+  size_t i = 0;
+  /* direct inode free */
+  while (i < INODE_DIRECT_BLOCKS && sector_count != 0)
+  {
+    free_map_release (inode->blocks[i], 1);
+    sector_count--;
+    i++;
+  }
+
+  if (i < INODE_DIRECT_BLOCKS + INODE_INDIRECT_BLOCKS && sector_count != 0)
+  {
+    disk_sector_t blocks[PTR_PER_BLOCKS];
+    cache_read(inode->blocks[i], &blocks, 0, DISK_SECTOR_SIZE);
+    bool is_full = false;
+    if(inode->block_count < INODE_DOUBLE_INDIRECT_BLOCKS)
+      is_full = true;
+
+    size_t indirect_count;
+    if(!is_full)
+      indirect_count = inode->indirect_count;
+    else
+      indirect_count = PTR_PER_BLOCKS;
+
+    size_t j;
+    for(j = 0; j < indirect_count; j++)
+    {
+      free_map_release(blocks[j], 1);
+      sector_count--;
+    }
+
+    free_map_release(inode->blocks[i], 1);
+    i++;
+
+  }
+
+  if (i == INODE_DOUBLE_INDIRECT_BLOCKS -1)
+  {
+    disk_sector_t fst_btable[PTR_PER_BLOCKS];
+    disk_sector_t snd_btable[PTR_PER_BLOCKS];
+    cache_read(inode->blocks[i], &fst_btable, 0, DISK_SECTOR_SIZE);
+    size_t indirect_count = inode->indirect_count;
+
+    size_t j;
+    for(j = 0; j < indirect_count; j++)
+    {
+      cache_read(fst_btable[i], &snd_btable, 0, DISK_SECTOR_SIZE);
+      size_t dindirect_count;
+      if(j == indirect_count-1)
+        dindirect_count = inode->dindirect_count;
+      else
+        dindirect_count = PTR_PER_BLOCKS;
+
+      size_t k;
+      for(k = 0; k < dindirect_count; k++)
+      {
+        free_map_release(snd_btable[j], 1);
+        sector_count--;
+      }
+
+      free_map_release(fst_btable[j], 1);
+
+    }
+
+    free_map_release(inode->blocks[i], 1);
+
+  }
+
+
+}
+
 /* Closes INODE and writes it to disk.
    If this was the last reference to INODE, frees its memory.
    If INODE was also a removed inode, frees its blocks. */
@@ -381,6 +459,7 @@ inode_close (struct inode *inode)
     /* Deallocate blocks if removed. */
     if (inode->removed) 
     {
+      inode_free (inode);
       cache_read(inode_get_inumber(inode), disk_inode, 0, DISK_SECTOR_SIZE);
       free_map_release(inode->sector, 1);
       free_map_release(disk_inode->start, bytes_to_sectors(disk_inode->length)); 
