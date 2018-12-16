@@ -512,12 +512,12 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   printf("inode_read_at(): 확인하기\n");
 #endif
 
-  if(offset >= inode->length) 
+  if(offset + size > inode->length) 
   {
 #ifdef DEBUG
   printf("inode_read_at(): error? overread\n");
 #endif
-  //  return;
+    return bytes_read;
   }
 
   while (size > 0) 
