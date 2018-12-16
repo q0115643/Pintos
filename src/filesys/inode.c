@@ -13,7 +13,7 @@
 #define INODE_MAGIC 0x494e4f44
 
 //#define DEBUG
-#define DEBUG_INODE
+//#define DEBUG_INODE
 
 /* PJ4 : inode 구조체 변경 */
 #define INODE_DIRECT_BLOCKS 12
@@ -137,12 +137,15 @@ inode_init (void)
 bool
 inode_allocate(struct inode *inode, off_t length)
 {
+#ifdef DEBUG_INODE
+  printf("inode_allocate(): 진입\n");
+#endif
   size_t new_sectors = bytes_to_sectors(length) - bytes_to_sectors(inode->length);
   static char zeros[DISK_SECTOR_SIZE];
 
   if(new_sectors == 0)
   {
-    inode->length = length;
+    if(length > inode->length) inode->length = length;
     return true;
   }
 
@@ -160,15 +163,15 @@ inode_allocate(struct inode *inode, off_t length)
   }
 
   /* indirect inode alloc */
-  if (sector_count < INODE_DIRECT_BLOCKS + INODE_INDIRECT_BLOCKS && new_sectors != 0)
+  if (sector_count == 12 && new_sectors != 0)
   {
-    disk_sector_t indirect_block[PTR_PER_BLOCKS];
+    disk_sector_t indirect_block[PTR_PER_BLOCKS]; // 512 Bytes
 
     // indirect block table 읽어오기
     if (inode->indirect_count == 0)
       free_map_allocate (1, &inode->blocks[sector_count]); // maybe sector_count == 12
     else
-      cache_read(inode->blocks[sector_count], &indirect_block, 0, PTR_PER_BLOCKS); // ???Q???
+      cache_read(inode->blocks[sector_count], indirect_block, 0, PTR_PER_BLOCKS); // ???Q???
 
     while (indirect_count < PTR_PER_BLOCKS && new_sectors != 0)
     {
@@ -178,14 +181,12 @@ inode_allocate(struct inode *inode, off_t length)
       new_sectors--;
     }
 
-    /* cache_write가 필요해... ???Q??? */
-    cache_write(inode->blocks[sector_count], indirect_block, indirect_count, DISK_SECTOR_SIZE);
+    cache_write(inode->blocks[sector_count], indirect_block, 0, DISK_SECTOR_SIZE);
     if (indirect_count == PTR_PER_BLOCKS) 
     {
       indirect_count = 0;
       sector_count++;
     }
-
   }
 
   /* Double inode alloc */
@@ -197,7 +198,7 @@ inode_allocate(struct inode *inode, off_t length)
     if (indirect_count == 0 && dindirect_count == 0)
       free_map_allocate(1, &inode->blocks[sector_count]);
     else
-      cache_read(inode->blocks[sector_count], &fst_btable, 0, PTR_PER_BLOCKS);
+      cache_read(inode->blocks[sector_count], fst_btable, 0, PTR_PER_BLOCKS);
 
     while (indirect_count < PTR_PER_BLOCKS && new_sectors != 0)
     {
@@ -205,7 +206,7 @@ inode_allocate(struct inode *inode, off_t length)
       if(dindirect_count == 0 && new_sectors != 0)
         free_map_allocate(1, &fst_btable[indirect_count]);
       else
-        cache_read(fst_btable[indirect_count], &snd_btable, 0, PTR_PER_BLOCKS);
+        cache_read(fst_btable[indirect_count], snd_btable, 0, PTR_PER_BLOCKS);
 
       while (dindirect_count < PTR_PER_BLOCKS && new_sectors != 0)
       {
@@ -221,12 +222,8 @@ inode_allocate(struct inode *inode, off_t length)
         dindirect_count = 0;
         indirect_count++;
       }
-
     }
-
-    /* cache_write가 필요해... ???Q??? */
-    cache_write(inode->blocks[sector_count], fst_btable, indirect_count, DISK_SECTOR_SIZE);
-
+    cache_write(inode->blocks[sector_count], fst_btable, 0, DISK_SECTOR_SIZE);
   }
 
   inode->length = length;
@@ -235,8 +232,6 @@ inode_allocate(struct inode *inode, off_t length)
   inode->dindirect_count = dindirect_count;
 
   return true;
-
-
 }
 
 
@@ -275,12 +270,10 @@ inode_create (disk_sector_t sector, off_t length)
         disk_inode->block_count = inode->block_count;
         disk_inode->indirect_count = inode->indirect_count;
         disk_inode->dindirect_count = inode->dindirect_count;
-        memcpy(&disk_inode->blocks, &inode->blocks, 14 * sizeof(disk_sector_t));
-        //cache_write (sector, disk_inode, 0, DISK_SECTOR_SIZE);
+        memcpy(disk_inode->blocks, inode->blocks, 14 * sizeof(disk_sector_t));
+        cache_write(sector, disk_inode, 0, DISK_SECTOR_SIZE);
         success = true;
-
       }
-
       /*
       if (free_map_allocate (sectors, &disk_inode->start))
         {
