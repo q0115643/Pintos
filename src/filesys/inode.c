@@ -132,6 +132,8 @@ byte_to_sector (const struct inode *inode, off_t pos)
   printf("byte_to_sector() double indirect read : %u \n", result);
 #endif
   }
+  free(fst_btable);
+  free(snd_btable);
   free(disk_inode);
   free(blocks);
 #ifdef DEBUG
